@@ -80,10 +80,13 @@ def replace_text_in_paragraph(paragraph, key, value):
     value_str = str(value) if value is not None else ""
     full_text = "".join(run.text for run in paragraph.runs)
     if placeholder in full_text:
-        for run in paragraph.runs:
-            if placeholder in run.text:
-                run.text = run.text.replace(placeholder, value_str)
-                return
+        replaced_text = full_text.replace(placeholder, value_str)
+        if paragraph.runs:
+            paragraph.runs[0].text = replaced_text
+            for run in paragraph.runs[1:]:
+                run.text = ""
+        else:
+            paragraph.add_run(replaced_text)
 
 
 def generar_documentos(df, word_file, progress_bar, status_text):
@@ -325,10 +328,11 @@ if modo_captura == "Formulario guiado (principal)":
             st.warning("⚠️ Corrige las validaciones antes de usar el registro.")
         else:
             st.session_state.df_captura = construir_dataframe_desde_formulario(form_data)
-            df = st.session_state.df_captura
             st.success("✅ Registro cargado correctamente para generar documentos.")
 
     if st.session_state.df_captura is not None:
+        df = st.session_state.df_captura
+
         with st.expander("👀 Vista previa del registro capturado", expanded=True):
             st.dataframe(st.session_state.df_captura, use_container_width=True)
 
