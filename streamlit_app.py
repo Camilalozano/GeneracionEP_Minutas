@@ -5,6 +5,7 @@ import zipfile
 import io
 from datetime import datetime, date
 import time
+import base64
 
 # ============== CONFIGURACIÓN DE PÁGINA ==============
 st.set_page_config(
@@ -174,6 +175,29 @@ if "form_borrador" not in st.session_state:
     st.session_state.form_borrador = {}
 if "df_captura" not in st.session_state:
     st.session_state.df_captura = None
+
+if "resultado_zip" not in st.session_state:
+    st.session_state.resultado_zip = None
+if "resultado_nombre" not in st.session_state:
+    st.session_state.resultado_nombre = ""
+if "resultado_generados" not in st.session_state:
+    st.session_state.resultado_generados = 0
+if "resultado_errores" not in st.session_state:
+    st.session_state.resultado_errores = []
+
+
+def disparar_descarga_automatica(zip_bytes, file_name):
+    b64 = base64.b64encode(zip_bytes).decode()
+    st.markdown(
+        f"""
+        <a id="auto-download-link" href="data:application/zip;base64,{b64}" download="{file_name}"></a>
+        <script>
+            const enlace = document.getElementById('auto-download-link');
+            if (enlace) {{ enlace.click(); }}
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ============== SIDEBAR ==============
 with st.sidebar:
@@ -355,17 +379,29 @@ if df is not None and word_file:
             time.sleep(0.5)
             if generados > 0:
                 zip_buffer.seek(0)
-                st.download_button(
-                    label=f"📥 Descargar ZIP ({generados} documentos)",
-                    data=zip_buffer.getvalue(),
-                    file_name=f"Documentos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                    type="primary"
-                )
-                if errores:
-                    with st.expander(f"⚠️ Ver {len(errores)} errores"):
-                        for error in errores:
-                            st.warning(error)
+                zip_data = zip_buffer.getvalue()
+                nombre_zip = f"Documentos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+
+                st.session_state.resultado_zip = zip_data
+                st.session_state.resultado_nombre = nombre_zip
+                st.session_state.resultado_generados = generados
+                st.session_state.resultado_errores = errores
+
+                st.success("✅ Documentos generados correctamente. Iniciando descarga automática...")
+                disparar_descarga_automatica(zip_data, nombre_zip)
             else:
                 st.error("❌ No se pudieron generar documentos")
+
+    if st.session_state.resultado_zip:
+        st.download_button(
+            label=f"📥 Descargar resultados ({st.session_state.resultado_generados} documentos)",
+            data=st.session_state.resultado_zip,
+            file_name=st.session_state.resultado_nombre,
+            mime="application/zip",
+            use_container_width=True,
+            type="secondary"
+        )
+        if st.session_state.resultado_errores:
+            with st.expander(f"⚠️ Ver {len(st.session_state.resultado_errores)} errores"):
+                for error in st.session_state.resultado_errores:
+                    st.warning(error)
