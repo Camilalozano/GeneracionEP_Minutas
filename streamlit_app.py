@@ -6,6 +6,7 @@ import io
 from datetime import datetime, date
 import time
 import base64
+from pathlib import Path
 
 # ============== CONFIGURACIÓN DE PÁGINA ==============
 st.set_page_config(
@@ -191,6 +192,20 @@ if "descarga_automatica_pendiente" not in st.session_state:
     st.session_state.descarga_automatica_pendiente = False
 
 
+def cargar_plantilla_precargada():
+    """Carga la plantilla institucional por defecto desde el repositorio."""
+    candidatos = [
+        Path("Plantilla.docx"),
+        Path("templates/Plantilla.docx"),
+    ]
+
+    for ruta in candidatos:
+        if ruta.exists() and ruta.is_file():
+            return io.BytesIO(ruta.read_bytes()), ruta.name
+
+    return None, None
+
+
 def disparar_descarga_automatica(zip_bytes, file_name):
     b64 = base64.b64encode(zip_bytes).decode()
     st.markdown(
@@ -352,14 +367,27 @@ else:
             st.error(f"Error al leer Excel: {e}")
 
 st.markdown("##### 📝 Plantilla (Word)")
-word_file = st.file_uploader(
-    "Arrastra o selecciona tu plantilla Word",
+plantilla_precargada, nombre_plantilla_precargada = cargar_plantilla_precargada()
+
+if plantilla_precargada:
+    st.success(f"✅ Plantilla precargada disponible: {nombre_plantilla_precargada}")
+else:
+    st.warning("⚠️ No se encontró la plantilla precargada. Sube una plantilla para continuar.")
+
+word_file_upload = st.file_uploader(
+    "Opcional: sube otra plantilla Word para reemplazar la plantilla por defecto",
     type="docx",
     key="word",
-    help="Plantilla Word con placeholders {{columna}}"
+    help="Si no subes archivo, se usará la plantilla institucional precargada."
 )
-if word_file:
-    st.success(f"✅ {word_file.name}")
+
+if word_file_upload:
+    word_file = word_file_upload
+    st.success(f"✅ Plantilla personalizada seleccionada: {word_file.name}")
+else:
+    word_file = plantilla_precargada
+    if word_file:
+        st.info("ℹ️ Se usará la plantilla precargada por defecto.")
 
 if df is not None and word_file:
     with st.expander("👀 Vista previa de datos", expanded=True):
