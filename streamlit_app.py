@@ -7,6 +7,8 @@ from datetime import datetime, date
 import time
 import base64
 from pathlib import Path
+import uuid
+import hmac
 
 # ============== CONFIGURACIÓN DE PÁGINA ==============
 st.set_page_config(
@@ -190,6 +192,21 @@ if "resultado_errores" not in st.session_state:
     st.session_state.resultado_errores = []
 if "descarga_automatica_pendiente" not in st.session_state:
     st.session_state.descarga_automatica_pendiente = False
+if "auditoria_acciones" not in st.session_state:
+    st.session_state.auditoria_acciones = []
+
+
+def registrar_evento_auditoria(accion, actor, detalle, id_caso="CASO-EN-SESION"):
+    st.session_state.auditoria_acciones.append(
+        {
+            "id_evento": str(uuid.uuid4())[:8],
+            "id_caso": id_caso,
+            "fecha_hora_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "actor": actor if actor else "No especificado",
+            "accion": accion,
+            "detalle": detalle,
+        }
+    )
 
 
 def cargar_plantilla_precargada():
@@ -219,6 +236,43 @@ def disparar_descarga_automatica(zip_bytes, file_name):
         unsafe_allow_html=True,
     )
 
+
+
+def autenticar_usuario():
+    """Solicita autenticación básica usando credenciales en st.secrets."""
+    usuario_config = st.secrets.get("AUTH_USER")
+    clave_config = st.secrets.get("AUTH_PASSWORD")
+
+    if not usuario_config or not clave_config:
+        st.warning("⚠️ Autenticación deshabilitada: configura AUTH_USER y AUTH_PASSWORD en secrets.")
+        return True, "Acceso sin autenticación"
+
+    if "autenticado" not in st.session_state:
+        st.session_state.autenticado = False
+    if "usuario_autenticado" not in st.session_state:
+        st.session_state.usuario_autenticado = ""
+
+    if st.session_state.autenticado:
+        return True, st.session_state.usuario_autenticado
+
+    st.markdown("### 🔐 Iniciar sesión")
+    with st.form("login_form"):
+        usuario = st.text_input("Usuario")
+        clave = st.text_input("Contraseña", type="password")
+        ingresar = st.form_submit_button("Ingresar")
+
+    if ingresar:
+        valido = hmac.compare_digest(usuario, str(usuario_config)) and hmac.compare_digest(clave, str(clave_config))
+        if valido:
+            st.session_state.autenticado = True
+            st.session_state.usuario_autenticado = usuario
+            st.success("✅ Autenticación exitosa.")
+            st.rerun()
+        else:
+            st.error("❌ Credenciales inválidas.")
+
+    return False, ""
+
 # ============== SIDEBAR ==============
 with st.sidebar:
     st.markdown("## Generador Inteligente de Documentos")
@@ -240,7 +294,19 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+autorizado, usuario_autenticado = autenticar_usuario()
+if not autorizado:
+    st.stop()
+
 st.markdown("### 📋 Proceso de Generación")
+actor_default = st.session_state.get("actor_actual", usuario_autenticado)
+actor_actual = st.text_input(
+    "👤 Responsable de la acción (usuario actual)",
+    value=actor_default,
+    help="Este nombre se registra en la bitácora para control institucional y trazabilidad legal.",
+)
+st.session_state.actor_actual = actor_actual
+
 col1, col2, col3 = st.columns(3)
 for col, paso, titulo, texto in [
     (col1, "Paso 1", "🧾 Capturar Datos", "Diligencia formulario guiado o carga Excel"),
@@ -336,6 +402,11 @@ if modo_captura == "Formulario guiado (principal)":
 
     if guardar_borrador:
         st.session_state.form_borrador = form_data
+        registrar_evento_auditoria(
+            "Guardar borrador",
+            actor_actual,
+            "Se guardó el borrador del formulario guiado.",
+        )
         st.success("✅ Borrador guardado en la sesión actual.")
 
     if cargar_registro:
@@ -343,6 +414,11 @@ if modo_captura == "Formulario guiado (principal)":
             st.warning("⚠️ Corrige las validaciones antes de usar el registro.")
         else:
             st.session_state.df_captura = construir_dataframe_desde_formulario(form_data)
+            registrar_evento_auditoria(
+                "Cargar registro",
+                actor_actual,
+                "Se cargó un registro del formulario guiado para generar documentos.",
+            )
             st.success("✅ Registro cargado correctamente para generar documentos.")
 
     if st.session_state.df_captura is not None:
@@ -362,6 +438,11 @@ else:
     if excel_file:
         try:
             df = pd.read_excel(excel_file)
+            registrar_evento_auditoria(
+                "Cargar Excel",
+                actor_actual,
+                f"Se cargó archivo Excel: {excel_file.name} con {len(df)} registros.",
+            )
             st.success(f"✅ {excel_file.name}")
         except Exception as e:
             st.error(f"Error al leer Excel: {e}")
@@ -383,6 +464,11 @@ word_file_upload = st.file_uploader(
 
 if word_file_upload:
     word_file = word_file_upload
+    registrar_evento_auditoria(
+        "Cargar plantilla personalizada",
+        actor_actual,
+        f"Se seleccionó plantilla Word personalizada: {word_file.name}.",
+    )
     st.success(f"✅ Plantilla personalizada seleccionada: {word_file.name}")
 else:
     word_file = plantilla_precargada
@@ -421,6 +507,11 @@ if df is not None and word_file:
                 st.session_state.resultado_generados = generados
                 st.session_state.resultado_errores = errores
                 st.session_state.descarga_automatica_pendiente = True
+                registrar_evento_auditoria(
+                    "Generar documentos",
+                    actor_actual,
+                    f"Se generaron {generados} documentos y {len(errores)} errores.",
+                )
 
                 st.success("✅ Documentos generados correctamente. Iniciando descarga automática...")
             else:
@@ -438,9 +529,33 @@ if st.session_state.resultado_zip:
 
     if st.session_state.descarga_automatica_pendiente:
         disparar_descarga_automatica(st.session_state.resultado_zip, st.session_state.resultado_nombre)
+        registrar_evento_auditoria(
+            "Descarga automática",
+            actor_actual,
+            f"Se disparó descarga automática del archivo {st.session_state.resultado_nombre}.",
+        )
         st.session_state.descarga_automatica_pendiente = False
 
     if st.session_state.resultado_errores:
         with st.expander(f"⚠️ Ver {len(st.session_state.resultado_errores)} errores"):
             for error in st.session_state.resultado_errores:
                 st.warning(error)
+
+st.markdown("---")
+st.markdown("### 🧾 Bitácora de auditoría del caso")
+st.caption(
+    "Registro de acciones para control institucional, responsabilidad legal y reconstrucción histórica del proceso."
+)
+
+if st.session_state.auditoria_acciones:
+    df_auditoria = pd.DataFrame(st.session_state.auditoria_acciones)
+    st.dataframe(df_auditoria, use_container_width=True, height=220)
+    st.download_button(
+        label="📥 Descargar bitácora de auditoría (CSV)",
+        data=df_auditoria.to_csv(index=False).encode("utf-8"),
+        file_name=f"auditoria_caso_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+else:
+    st.info("Aún no hay acciones registradas en esta sesión.")
