@@ -279,11 +279,24 @@ if "auditoria_acciones" not in st.session_state:
     st.session_state.auditoria_acciones = []
 
 
-def registrar_evento_auditoria(accion, actor, detalle, id_caso="CASO-EN-SESION"):
+def obtener_id_caso_desde_codigo_objeto(origen=None):
+    """Obtiene el ID del caso desde la variable de plantilla {{codigo_objeto}}."""
+    if isinstance(origen, pd.DataFrame) and "codigo_objeto" in origen.columns and not origen.empty:
+        valor = origen.iloc[0].get("codigo_objeto", "")
+    elif isinstance(origen, dict):
+        valor = origen.get("codigo_objeto", "")
+    else:
+        valor = st.session_state.form_borrador.get("codigo_objeto", "")
+
+    valor_normalizado = str(valor).strip()
+    return valor_normalizado if valor_normalizado else "SIN-CODIGO-OBJETO"
+
+
+def registrar_evento_auditoria(accion, actor, detalle, id_caso=None):
     st.session_state.auditoria_acciones.append(
         {
             "id_evento": str(uuid.uuid4())[:8],
-            "id_caso": id_caso,
+            "ID_Caso": id_caso or obtener_id_caso_desde_codigo_objeto(),
             "fecha_hora_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
             "actor": actor if actor else "No especificado",
             "accion": accion,
@@ -611,6 +624,7 @@ if modo_captura == "Formulario guiado (principal)":
             "Guardar borrador",
             actor_actual,
             "Se guardó el borrador del formulario guiado con variables de la plantilla.",
+            obtener_id_caso_desde_codigo_objeto(form_data),
         )
         st.success("✅ Borrador guardado en la sesión actual.")
 
@@ -623,6 +637,7 @@ if modo_captura == "Formulario guiado (principal)":
                 "Cargar registro",
                 actor_actual,
                 "Se cargó un registro del formulario guiado para generar documentos.",
+                obtener_id_caso_desde_codigo_objeto(form_data),
             )
             st.success("✅ Registro cargado correctamente para generar documentos.")
 
@@ -647,6 +662,7 @@ else:
                 "Cargar Excel",
                 actor_actual,
                 f"Se cargó archivo Excel: {excel_file.name} con {len(df)} registros.",
+                obtener_id_caso_desde_codigo_objeto(df),
             )
             st.success(f"✅ {excel_file.name}")
         except Exception as e:
@@ -673,6 +689,7 @@ if word_file_upload:
         "Cargar plantilla personalizada",
         actor_actual,
         f"Se seleccionó plantilla Word personalizada: {word_file.name}.",
+        obtener_id_caso_desde_codigo_objeto(df),
     )
     st.success(f"✅ Plantilla personalizada seleccionada: {word_file.name}")
 else:
@@ -716,6 +733,7 @@ if df is not None and word_file:
                     "Generar documentos",
                     actor_actual,
                     f"Se generaron {generados} documentos y {len(errores)} errores.",
+                    obtener_id_caso_desde_codigo_objeto(df),
                 )
 
                 st.success("✅ Documentos generados correctamente. Iniciando descarga automática...")
@@ -738,6 +756,7 @@ if st.session_state.resultado_zip:
             "Descarga automática",
             actor_actual,
             f"Se disparó descarga automática del archivo {st.session_state.resultado_nombre}.",
+            obtener_id_caso_desde_codigo_objeto(df),
         )
         st.session_state.descarga_automatica_pendiente = False
 
