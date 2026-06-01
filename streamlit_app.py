@@ -135,85 +135,93 @@ def generar_documentos(df, word_file, progress_bar, status_text):
 
 
 PLANTILLA_VARIABLES = [
+    "hoy",
     "contratista",
-    "descripcion",
+    "descripcion_necesidad",
     "numeroproyecto",
     "nombreproyectoinversion",
-    "objeto",
-    "tipo",
-    "unspsc",
-    "segmento",
-    "familia",
-    "clase",
-    "plazo",
-    "valor",
-    "forma",
-    "obl_1",
-    "obl_2",
-    "obl_3",
-    "obl_4",
-    "obl_5",
-    "obl_6",
-    "obl_7",
-    "obl_8",
-    "obl_9",
-    "obl_10",
+    "codigo_objeto",
+    "objeto_contrato",
+    "tipo_contrato",
+    "codigo_unspsc",
+    "segmento_unspsc",
+    "familia_unspsc",
+    "clase_unspsc",
+    "plazo_ejecucion_letras",
+    "plazo_ejecucion_numero",
+    "unidad_plazo",
+    "valor_contrato_letras",
+    "valor_contrato_numeros",
+    "forma_pago",
+    "requiere_licencias_si",
+    "requiere_licencias_no",
+    "obligaciones_especificas",
     "idoneidad",
     "equivalencias",
-    "supervision",
-    "nombrefirma",
-    "dependencia",
+    "supervisor_cargo",
+    "nombre_firma_autorizada",
+    "cargo_firma_autorizada",
     "elaboro",
+    "reviso",
+    "aprobo",
 ]
 
 CAMPOS_OBLIGATORIOS = [
+    "hoy",
     "contratista",
-    "descripcion",
+    "descripcion_necesidad",
     "numeroproyecto",
     "nombreproyectoinversion",
-    "objeto",
-    "tipo",
-    "unspsc",
-    "plazo",
-    "valor",
-    "forma",
+    "codigo_objeto",
+    "objeto_contrato",
+    "tipo_contrato",
+    "codigo_unspsc",
+    "plazo_ejecucion_letras",
+    "plazo_ejecucion_numero",
+    "unidad_plazo",
+    "valor_contrato_letras",
+    "valor_contrato_numeros",
+    "forma_pago",
+    "obligaciones_especificas",
     "idoneidad",
-    "supervision",
-    "nombrefirma",
-    "dependencia",
+    "supervisor_cargo",
+    "nombre_firma_autorizada",
+    "cargo_firma_autorizada",
     "elaboro",
+    "reviso",
+    "aprobo",
 ]
 
 ETIQUETAS_CAMPOS = {
+    "hoy": "Fecha",
     "contratista": "Contratista",
-    "descripcion": "Descripción",
+    "descripcion_necesidad": "Descripción de la necesidad",
     "numeroproyecto": "Número de proyecto",
     "nombreproyectoinversion": "Nombre del proyecto de inversión",
-    "objeto": "Objeto",
-    "tipo": "Tipo",
-    "unspsc": "UNSPSC",
-    "segmento": "Segmento",
-    "familia": "Familia",
-    "clase": "Clase",
-    "plazo": "Plazo",
-    "valor": "Valor",
-    "forma": "Forma de pago",
-    "obl_1": "Obligación 1",
-    "obl_2": "Obligación 2",
-    "obl_3": "Obligación 3",
-    "obl_4": "Obligación 4",
-    "obl_5": "Obligación 5",
-    "obl_6": "Obligación 6",
-    "obl_7": "Obligación 7",
-    "obl_8": "Obligación 8",
-    "obl_9": "Obligación 9",
-    "obl_10": "Obligación 10",
+    "codigo_objeto": "Código de objeto",
+    "objeto_contrato": "Objeto del contrato",
+    "tipo_contrato": "Tipo de contrato",
+    "codigo_unspsc": "Código UNSPSC",
+    "segmento_unspsc": "Segmento UNSPSC",
+    "familia_unspsc": "Familia UNSPSC",
+    "clase_unspsc": "Clase UNSPSC",
+    "plazo_ejecucion_letras": "Plazo de ejecución en letras",
+    "plazo_ejecucion_numero": "Plazo de ejecución en número",
+    "unidad_plazo": "Unidad del plazo",
+    "valor_contrato_letras": "Valor del contrato en letras",
+    "valor_contrato_numeros": "Valor del contrato en números",
+    "forma_pago": "Forma de pago",
+    "requiere_licencias_si": "Requiere licencias: sí",
+    "requiere_licencias_no": "Requiere licencias: no",
+    "obligaciones_especificas": "Obligaciones específicas",
     "idoneidad": "Idoneidad",
     "equivalencias": "Equivalencias",
-    "supervision": "Supervisión",
-    "nombrefirma": "Nombre para firma",
-    "dependencia": "Dependencia",
+    "supervisor_cargo": "Cargo del supervisor",
+    "nombre_firma_autorizada": "Nombre de la firma autorizada",
+    "cargo_firma_autorizada": "Cargo de la firma autorizada",
     "elaboro": "Elaboró",
+    "reviso": "Revisó",
+    "aprobo": "Aprobó",
 }
 
 def validar_formulario(data):
@@ -223,14 +231,13 @@ def validar_formulario(data):
         if not str(data.get(campo, "")).strip():
             errores[campo] = f"{ETIQUETAS_CAMPOS[campo]} es obligatorio."
 
-    if data.get("objeto") and len(data["objeto"].strip()) < 20:
-        errores["objeto"] = "El objeto debe tener al menos 20 caracteres."
+    if data.get("objeto_contrato") and len(data["objeto_contrato"].strip()) < 20:
+        errores["objeto_contrato"] = "El objeto del contrato debe tener al menos 20 caracteres."
 
-    obligaciones_diligenciadas = [
-        campo for campo in [f"obl_{i}" for i in range(1, 11)] if str(data.get(campo, "")).strip()
-    ]
-    if not obligaciones_diligenciadas:
-        errores["obligaciones"] = "Diligencia al menos una obligación contractual."
+    licencias_si = str(data.get("requiere_licencias_si", "")).strip()
+    licencias_no = str(data.get("requiere_licencias_no", "")).strip()
+    if bool(licencias_si) == bool(licencias_no):
+        errores["requiere_licencias"] = "Selecciona solo una opción para indicar si requiere licencias."
 
     return errores
 
@@ -238,6 +245,19 @@ def validar_formulario(data):
 def construir_dataframe_desde_formulario(data):
     fila = {campo: str(data.get(campo, "")).strip() for campo in PLANTILLA_VARIABLES}
     return pd.DataFrame([fila], columns=PLANTILLA_VARIABLES)
+
+
+def obtener_fecha_borrador(defaults):
+    fecha_guardada = defaults.get("hoy")
+    if hasattr(fecha_guardada, "strftime"):
+        return fecha_guardada
+    if isinstance(fecha_guardada, str) and fecha_guardada.strip():
+        for formato in ("%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(fecha_guardada.strip(), formato).date()
+            except ValueError:
+                continue
+    return datetime.now().date()
 
 
 if "form_borrador" not in st.session_state:
@@ -365,6 +385,11 @@ if modo_captura == "Formulario guiado (principal)":
         st.markdown("#### 1) Identificación del proceso")
         id_col1, id_col2 = st.columns(2)
         with id_col1:
+            hoy = st.date_input(
+                "Fecha *",
+                value=obtener_fecha_borrador(defaults),
+                help="Variable: {{hoy}}",
+            )
             contratista = st.text_input(
                 "Contratista *",
                 value=defaults.get("contratista", ""),
@@ -375,90 +400,116 @@ if modo_captura == "Formulario guiado (principal)":
                 value=defaults.get("numeroproyecto", ""),
                 help="Variable: {{numeroproyecto}}",
             )
-            dependencia = st.text_input(
-                "Dependencia *",
-                value=defaults.get("dependencia", ""),
-                help="Variable: {{dependencia}}",
-            )
         with id_col2:
             nombreproyectoinversion = st.text_input(
                 "Nombre del proyecto de inversión *",
                 value=defaults.get("nombreproyectoinversion", ""),
                 help="Variable: {{nombreproyectoinversion}}",
             )
-            tipo = st.text_input(
-                "Tipo *",
-                value=defaults.get("tipo", ""),
-                help="Variable: {{tipo}}",
+            codigo_objeto = st.text_input(
+                "Código de objeto *",
+                value=defaults.get("codigo_objeto", ""),
+                help="Variable: {{codigo_objeto}}",
             )
-            elaboro = st.text_input(
-                "Elaboró *",
-                value=defaults.get("elaboro", ""),
-                help="Variable: {{elaboro}}",
+            tipo_contrato = st.text_input(
+                "Tipo de contrato *",
+                value=defaults.get("tipo_contrato", ""),
+                help="Variable: {{tipo_contrato}}",
             )
 
-        st.markdown("#### 2) Descripción y objeto")
-        descripcion = st.text_area(
-            "Descripción *",
-            value=defaults.get("descripcion", ""),
-            help="Variable: {{descripcion}}",
+        st.markdown("#### 2) Necesidad y objeto contractual")
+        descripcion_necesidad = st.text_area(
+            "Descripción de la necesidad *",
+            value=defaults.get("descripcion_necesidad", ""),
+            help="Variable: {{descripcion_necesidad}}",
         )
-        objeto = st.text_area(
-            "Objeto *",
-            value=defaults.get("objeto", ""),
-            help="Variable: {{objeto}}",
+        objeto_contrato = st.text_area(
+            "Objeto del contrato *",
+            value=defaults.get("objeto_contrato", ""),
+            help="Variable: {{objeto_contrato}}",
         )
 
         st.markdown("#### 3) Clasificación UNSPSC")
         unspsc_col1, unspsc_col2, unspsc_col3, unspsc_col4 = st.columns(4)
         with unspsc_col1:
-            unspsc = st.text_input("UNSPSC *", value=defaults.get("unspsc", ""), help="Variable: {{unspsc}}")
+            codigo_unspsc = st.text_input(
+                "Código UNSPSC *",
+                value=defaults.get("codigo_unspsc", ""),
+                help="Variable: {{codigo_unspsc}}",
+            )
         with unspsc_col2:
-            segmento = st.text_input("Segmento", value=defaults.get("segmento", ""), help="Variable: {{segmento}}")
+            segmento_unspsc = st.text_input(
+                "Segmento UNSPSC",
+                value=defaults.get("segmento_unspsc", ""),
+                help="Variable: {{segmento_unspsc}}",
+            )
         with unspsc_col3:
-            familia = st.text_input("Familia", value=defaults.get("familia", ""), help="Variable: {{familia}}")
+            familia_unspsc = st.text_input(
+                "Familia UNSPSC",
+                value=defaults.get("familia_unspsc", ""),
+                help="Variable: {{familia_unspsc}}",
+            )
         with unspsc_col4:
-            clase = st.text_input("Clase", value=defaults.get("clase", ""), help="Variable: {{clase}}")
-
-        st.markdown("#### 4) Condiciones contractuales")
-        cond_col1, cond_col2 = st.columns(2)
-        with cond_col1:
-            plazo = st.text_input(
-                "Plazo *",
-                value=defaults.get("plazo", ""),
-                help="Variable: {{plazo}}",
-            )
-            valor = st.text_input(
-                "Valor *",
-                value=defaults.get("valor", ""),
-                help="Variable: {{valor}}",
-            )
-        with cond_col2:
-            forma = st.text_area(
-                "Forma de pago *",
-                value=defaults.get("forma", ""),
-                help="Variable: {{forma}}",
+            clase_unspsc = st.text_input(
+                "Clase UNSPSC",
+                value=defaults.get("clase_unspsc", ""),
+                help="Variable: {{clase_unspsc}}",
             )
 
-        st.markdown("#### 5) Obligaciones contractuales")
-        obligaciones = {}
-        for fila_obligacion in range(1, 11, 2):
-            obl_col1, obl_col2 = st.columns(2)
-            with obl_col1:
-                obligaciones[f"obl_{fila_obligacion}"] = st.text_area(
-                    f"Obligación {fila_obligacion}",
-                    value=defaults.get(f"obl_{fila_obligacion}", ""),
-                    help=f"Variable: {{{{obl_{fila_obligacion}}}}}",
-                    key=f"form_obl_{fila_obligacion}",
-                )
-            with obl_col2:
-                siguiente = fila_obligacion + 1
-                obligaciones[f"obl_{siguiente}"] = st.text_area(
-                    f"Obligación {siguiente}",
-                    value=defaults.get(f"obl_{siguiente}", ""),
-                    help=f"Variable: {{{{obl_{siguiente}}}}}",
-                    key=f"form_obl_{siguiente}",
-                )
+        st.markdown("#### 4) Plazo, valor y pago")
+        plazo_col1, plazo_col2, plazo_col3 = st.columns(3)
+        with plazo_col1:
+            plazo_ejecucion_letras = st.text_input(
+                "Plazo de ejecución en letras *",
+                value=defaults.get("plazo_ejecucion_letras", ""),
+                help="Variable: {{plazo_ejecucion_letras}}",
+            )
+        with plazo_col2:
+            plazo_ejecucion_numero = st.text_input(
+                "Plazo de ejecución en número *",
+                value=defaults.get("plazo_ejecucion_numero", ""),
+                help="Variable: {{plazo_ejecucion_numero}}",
+            )
+        with plazo_col3:
+            unidad_plazo = st.text_input(
+                "Unidad del plazo *",
+                value=defaults.get("unidad_plazo", ""),
+                help="Variable: {{unidad_plazo}}",
+            )
+
+        valor_col1, valor_col2 = st.columns(2)
+        with valor_col1:
+            valor_contrato_letras = st.text_input(
+                "Valor del contrato en letras *",
+                value=defaults.get("valor_contrato_letras", ""),
+                help="Variable: {{valor_contrato_letras}}",
+            )
+        with valor_col2:
+            valor_contrato_numeros = st.text_input(
+                "Valor del contrato en números *",
+                value=defaults.get("valor_contrato_numeros", ""),
+                help="Variable: {{valor_contrato_numeros}}",
+            )
+        forma_pago = st.text_area(
+            "Forma de pago *",
+            value=defaults.get("forma_pago", ""),
+            help="Variable: {{forma_pago}}",
+        )
+
+        st.markdown("#### 5) Licencias y obligaciones")
+        requiere_licencias = st.radio(
+            "¿Requiere licencias? *",
+            ["Sí", "No"],
+            index=0 if defaults.get("requiere_licencias_si") else 1,
+            horizontal=True,
+            help="Marca una opción para diligenciar {{requiere_licencias_si}} o {{requiere_licencias_no}} con una X.",
+        )
+        obligaciones_especificas = st.text_area(
+            "Obligaciones específicas *",
+            value=defaults.get("obligaciones_especificas", ""),
+            help="Variable: {{obligaciones_especificas}}",
+            height=180,
+        )
 
         st.markdown("#### 6) Idoneidad, supervisión y firmas")
         idoneidad = st.text_area(
@@ -471,42 +522,81 @@ if modo_captura == "Formulario guiado (principal)":
             value=defaults.get("equivalencias", ""),
             help="Variable: {{equivalencias}}",
         )
-        supervision = st.text_area(
-            "Supervisión *",
-            value=defaults.get("supervision", ""),
-            help="Variable: {{supervision}}",
+        supervisor_cargo = st.text_input(
+            "Cargo del supervisor *",
+            value=defaults.get("supervisor_cargo", ""),
+            help="Variable: {{supervisor_cargo}}",
         )
-        nombrefirma = st.text_input(
-            "Nombre para firma *",
-            value=defaults.get("nombrefirma", ""),
-            help="Variable: {{nombrefirma}}",
-        )
+
+        firma_col1, firma_col2 = st.columns(2)
+        with firma_col1:
+            nombre_firma_autorizada = st.text_input(
+                "Nombre de la firma autorizada *",
+                value=defaults.get("nombre_firma_autorizada", ""),
+                help="Variable: {{nombre_firma_autorizada}}",
+            )
+        with firma_col2:
+            cargo_firma_autorizada = st.text_input(
+                "Cargo de la firma autorizada *",
+                value=defaults.get("cargo_firma_autorizada", ""),
+                help="Variable: {{cargo_firma_autorizada}}",
+            )
+
+        st.markdown("#### 7) Control de elaboración")
+        ctrl_col1, ctrl_col2, ctrl_col3 = st.columns(3)
+        with ctrl_col1:
+            elaboro = st.text_input(
+                "Elaboró *",
+                value=defaults.get("elaboro", ""),
+                help="Variable: {{elaboro}}",
+            )
+        with ctrl_col2:
+            reviso = st.text_input(
+                "Revisó *",
+                value=defaults.get("reviso", ""),
+                help="Variable: {{reviso}}",
+            )
+        with ctrl_col3:
+            aprobo = st.text_input(
+                "Aprobó *",
+                value=defaults.get("aprobo", ""),
+                help="Variable: {{aprobo}}",
+            )
 
         c1, c2 = st.columns(2)
         guardar_borrador = c1.form_submit_button("💾 Guardar borrador")
         cargar_registro = c2.form_submit_button("✅ Usar este registro")
 
     form_data = {
+        "hoy": hoy.strftime("%d/%m/%Y"),
         "contratista": contratista,
-        "descripcion": descripcion,
+        "descripcion_necesidad": descripcion_necesidad,
         "numeroproyecto": numeroproyecto,
         "nombreproyectoinversion": nombreproyectoinversion,
-        "objeto": objeto,
-        "tipo": tipo,
-        "unspsc": unspsc,
-        "segmento": segmento,
-        "familia": familia,
-        "clase": clase,
-        "plazo": plazo,
-        "valor": valor,
-        "forma": forma,
-        **obligaciones,
+        "codigo_objeto": codigo_objeto,
+        "objeto_contrato": objeto_contrato,
+        "tipo_contrato": tipo_contrato,
+        "codigo_unspsc": codigo_unspsc,
+        "segmento_unspsc": segmento_unspsc,
+        "familia_unspsc": familia_unspsc,
+        "clase_unspsc": clase_unspsc,
+        "plazo_ejecucion_letras": plazo_ejecucion_letras,
+        "plazo_ejecucion_numero": plazo_ejecucion_numero,
+        "unidad_plazo": unidad_plazo,
+        "valor_contrato_letras": valor_contrato_letras,
+        "valor_contrato_numeros": valor_contrato_numeros,
+        "forma_pago": forma_pago,
+        "requiere_licencias_si": "X" if requiere_licencias == "Sí" else "",
+        "requiere_licencias_no": "X" if requiere_licencias == "No" else "",
+        "obligaciones_especificas": obligaciones_especificas,
         "idoneidad": idoneidad,
         "equivalencias": equivalencias,
-        "supervision": supervision,
-        "nombrefirma": nombrefirma,
-        "dependencia": dependencia,
+        "supervisor_cargo": supervisor_cargo,
+        "nombre_firma_autorizada": nombre_firma_autorizada,
+        "cargo_firma_autorizada": cargo_firma_autorizada,
         "elaboro": elaboro,
+        "reviso": reviso,
+        "aprobo": aprobo,
     }
     errores = validar_formulario(form_data)
 
