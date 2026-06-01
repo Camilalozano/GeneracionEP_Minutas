@@ -3,7 +3,7 @@ import pandas as pd
 from docx import Document
 import zipfile
 import io
-from datetime import datetime, date
+from datetime import datetime
 import time
 import base64
 from pathlib import Path
@@ -134,46 +134,110 @@ def generar_documentos(df, word_file, progress_bar, status_text):
         raise Exception(f"Error procesando documentos: {str(e)}")
 
 
+PLANTILLA_VARIABLES = [
+    "contratista",
+    "descripcion",
+    "numeroproyecto",
+    "nombreproyectoinversion",
+    "objeto",
+    "tipo",
+    "unspsc",
+    "segmento",
+    "familia",
+    "clase",
+    "plazo",
+    "valor",
+    "forma",
+    "obl_1",
+    "obl_2",
+    "obl_3",
+    "obl_4",
+    "obl_5",
+    "obl_6",
+    "obl_7",
+    "obl_8",
+    "obl_9",
+    "obl_10",
+    "idoneidad",
+    "equivalencias",
+    "supervision",
+    "nombrefirma",
+    "dependencia",
+    "elaboro",
+]
+
+CAMPOS_OBLIGATORIOS = [
+    "contratista",
+    "descripcion",
+    "numeroproyecto",
+    "nombreproyectoinversion",
+    "objeto",
+    "tipo",
+    "unspsc",
+    "plazo",
+    "valor",
+    "forma",
+    "idoneidad",
+    "supervision",
+    "nombrefirma",
+    "dependencia",
+    "elaboro",
+]
+
+ETIQUETAS_CAMPOS = {
+    "contratista": "Contratista",
+    "descripcion": "Descripción",
+    "numeroproyecto": "Número de proyecto",
+    "nombreproyectoinversion": "Nombre del proyecto de inversión",
+    "objeto": "Objeto",
+    "tipo": "Tipo",
+    "unspsc": "UNSPSC",
+    "segmento": "Segmento",
+    "familia": "Familia",
+    "clase": "Clase",
+    "plazo": "Plazo",
+    "valor": "Valor",
+    "forma": "Forma de pago",
+    "obl_1": "Obligación 1",
+    "obl_2": "Obligación 2",
+    "obl_3": "Obligación 3",
+    "obl_4": "Obligación 4",
+    "obl_5": "Obligación 5",
+    "obl_6": "Obligación 6",
+    "obl_7": "Obligación 7",
+    "obl_8": "Obligación 8",
+    "obl_9": "Obligación 9",
+    "obl_10": "Obligación 10",
+    "idoneidad": "Idoneidad",
+    "equivalencias": "Equivalencias",
+    "supervision": "Supervisión",
+    "nombrefirma": "Nombre para firma",
+    "dependencia": "Dependencia",
+    "elaboro": "Elaboró",
+}
+
 def validar_formulario(data):
     errores = {}
 
-    if not data["dependencia"]:
-        errores["dependencia"] = "La dependencia es obligatoria."
+    for campo in CAMPOS_OBLIGATORIOS:
+        if not str(data.get(campo, "")).strip():
+            errores[campo] = f"{ETIQUETAS_CAMPOS[campo]} es obligatorio."
 
-    if not data["objeto"] or len(data["objeto"].strip()) < 20:
-        errores["objeto"] = "El objeto es obligatorio y debe tener al menos 20 caracteres."
-    elif len(data["objeto"]) > 500:
-        errores["objeto"] = "El objeto no puede superar 500 caracteres."
+    if data.get("objeto") and len(data["objeto"].strip()) < 20:
+        errores["objeto"] = "El objeto debe tener al menos 20 caracteres."
 
-    if data["plazo_inicio"] > data["plazo_fin"]:
-        errores["plazo"] = "La fecha de inicio no puede ser posterior a la fecha final."
-
-    if data["modalidad"] not in ["Contratación directa", "Licitación pública", "Selección abreviada", "Concurso de méritos"]:
-        errores["modalidad"] = "Selecciona una modalidad válida de la lista cerrada."
-
-    if not data["supervisor"] or len(data["supervisor"].strip()) < 5:
-        errores["supervisor"] = "El supervisor es obligatorio y debe tener al menos 5 caracteres."
-
-    if data["valor_estimado"] <= 0:
-        errores["valor_estimado"] = "El valor estimado debe ser mayor a cero."
+    obligaciones_diligenciadas = [
+        campo for campo in [f"obl_{i}" for i in range(1, 11)] if str(data.get(campo, "")).strip()
+    ]
+    if not obligaciones_diligenciadas:
+        errores["obligaciones"] = "Diligencia al menos una obligación contractual."
 
     return errores
 
 
 def construir_dataframe_desde_formulario(data):
-    fila = {
-        "dependencia": data["dependencia"],
-        "descripción": data["objeto"],
-        "plazo_inicio": data["plazo_inicio"].strftime("%Y-%m-%d"),
-        "plazo_fin": data["plazo_fin"].strftime("%Y-%m-%d"),
-        "plazo": f"{data['plazo_inicio'].strftime('%Y-%m-%d')} a {data['plazo_fin'].strftime('%Y-%m-%d')}",
-        "modalidad": data["modalidad"],
-        "supervisor": data["supervisor"],
-        "valor_estimado": f"{data['valor_estimado']:,.2f}",
-        "observaciones": data["observaciones"],
-        "fecha_solicitud": data["fecha_solicitud"].strftime("%Y-%m-%d"),
-    }
-    return pd.DataFrame([fila])
+    fila = {campo: str(data.get(campo, "")).strip() for campo in PLANTILLA_VARIABLES}
+    return pd.DataFrame([fila], columns=PLANTILLA_VARIABLES)
 
 
 if "form_borrador" not in st.session_state:
@@ -291,78 +355,172 @@ excel_file = None
 df = None
 
 if modo_captura == "Formulario guiado (principal)":
-    st.info("🧭 Diligencia los bloques del formulario. Puedes guardar un borrador temporal en sesión.")
+    st.info(
+        "🧭 Diligencia los campos del formulario guiado. "
+        "Cada campo corresponde a una variable disponible en la plantilla Word."
+    )
 
     defaults = st.session_state.form_borrador
     with st.form("formulario_guiado"):
-        st.markdown("#### 1) Datos de la dependencia")
-        dep_col1, dep_col2 = st.columns(2)
-        with dep_col1:
-            dependencia = st.selectbox(
-                "Dependencia *",
-                ["", "GEP", "GGC", "Jurídica", "Financiera", "Talento Humano"],
-                index=0 if not defaults.get("dependencia") else ["", "GEP", "GGC", "Jurídica", "Financiera", "Talento Humano"].index(defaults.get("dependencia")),
+        st.markdown("#### 1) Identificación del proceso")
+        id_col1, id_col2 = st.columns(2)
+        with id_col1:
+            contratista = st.text_input(
+                "Contratista *",
+                value=defaults.get("contratista", ""),
+                help="Variable: {{contratista}}",
             )
-        with dep_col2:
-            fecha_solicitud = st.date_input("Fecha de solicitud *", value=defaults.get("fecha_solicitud", date.today()))
+            numeroproyecto = st.text_input(
+                "Número de proyecto *",
+                value=defaults.get("numeroproyecto", ""),
+                help="Variable: {{numeroproyecto}}",
+            )
+            dependencia = st.text_input(
+                "Dependencia *",
+                value=defaults.get("dependencia", ""),
+                help="Variable: {{dependencia}}",
+            )
+        with id_col2:
+            nombreproyectoinversion = st.text_input(
+                "Nombre del proyecto de inversión *",
+                value=defaults.get("nombreproyectoinversion", ""),
+                help="Variable: {{nombreproyectoinversion}}",
+            )
+            tipo = st.text_input(
+                "Tipo *",
+                value=defaults.get("tipo", ""),
+                help="Variable: {{tipo}}",
+            )
+            elaboro = st.text_input(
+                "Elaboró *",
+                value=defaults.get("elaboro", ""),
+                help="Variable: {{elaboro}}",
+            )
 
-        st.markdown("#### 2) Objeto y modalidad")
-        objeto = st.text_area("Objeto contractual *", value=defaults.get("objeto", ""), max_chars=500)
-        modalidad = st.selectbox(
-            "Modalidad de selección *",
-            ["Contratación directa", "Licitación pública", "Selección abreviada", "Concurso de méritos"],
-            index=["Contratación directa", "Licitación pública", "Selección abreviada", "Concurso de méritos"].index(defaults.get("modalidad", "Contratación directa")),
+        st.markdown("#### 2) Descripción y objeto")
+        descripcion = st.text_area(
+            "Descripción *",
+            value=defaults.get("descripcion", ""),
+            help="Variable: {{descripcion}}",
+        )
+        objeto = st.text_area(
+            "Objeto *",
+            value=defaults.get("objeto", ""),
+            help="Variable: {{objeto}}",
         )
 
-        st.markdown("#### 3) Plazo y responsables")
-        pcol1, pcol2, pcol3 = st.columns([1, 1, 2])
-        with pcol1:
-            plazo_inicio = st.date_input("Plazo inicio *", value=defaults.get("plazo_inicio", date.today()))
-        with pcol2:
-            plazo_fin = st.date_input("Plazo fin *", value=defaults.get("plazo_fin", date.today()))
-        with pcol3:
-            supervisor = st.text_input("Supervisor *", value=defaults.get("supervisor", ""), max_chars=120)
+        st.markdown("#### 3) Clasificación UNSPSC")
+        unspsc_col1, unspsc_col2, unspsc_col3, unspsc_col4 = st.columns(4)
+        with unspsc_col1:
+            unspsc = st.text_input("UNSPSC *", value=defaults.get("unspsc", ""), help="Variable: {{unspsc}}")
+        with unspsc_col2:
+            segmento = st.text_input("Segmento", value=defaults.get("segmento", ""), help="Variable: {{segmento}}")
+        with unspsc_col3:
+            familia = st.text_input("Familia", value=defaults.get("familia", ""), help="Variable: {{familia}}")
+        with unspsc_col4:
+            clase = st.text_input("Clase", value=defaults.get("clase", ""), help="Variable: {{clase}}")
 
-        st.markdown("#### 4) Valor y observaciones")
-        valor_estimado = st.number_input("Valor estimado (COP) *", min_value=0.0, step=100000.0, value=float(defaults.get("valor_estimado", 0.0)))
-        observaciones = st.text_area("Observaciones", value=defaults.get("observaciones", ""), max_chars=1000)
+        st.markdown("#### 4) Condiciones contractuales")
+        cond_col1, cond_col2 = st.columns(2)
+        with cond_col1:
+            plazo = st.text_input(
+                "Plazo *",
+                value=defaults.get("plazo", ""),
+                help="Variable: {{plazo}}",
+            )
+            valor = st.text_input(
+                "Valor *",
+                value=defaults.get("valor", ""),
+                help="Variable: {{valor}}",
+            )
+        with cond_col2:
+            forma = st.text_area(
+                "Forma de pago *",
+                value=defaults.get("forma", ""),
+                help="Variable: {{forma}}",
+            )
+
+        st.markdown("#### 5) Obligaciones contractuales")
+        obligaciones = {}
+        for fila_obligacion in range(1, 11, 2):
+            obl_col1, obl_col2 = st.columns(2)
+            with obl_col1:
+                obligaciones[f"obl_{fila_obligacion}"] = st.text_area(
+                    f"Obligación {fila_obligacion}",
+                    value=defaults.get(f"obl_{fila_obligacion}", ""),
+                    help=f"Variable: {{{{obl_{fila_obligacion}}}}}",
+                    key=f"form_obl_{fila_obligacion}",
+                )
+            with obl_col2:
+                siguiente = fila_obligacion + 1
+                obligaciones[f"obl_{siguiente}"] = st.text_area(
+                    f"Obligación {siguiente}",
+                    value=defaults.get(f"obl_{siguiente}", ""),
+                    help=f"Variable: {{{{obl_{siguiente}}}}}",
+                    key=f"form_obl_{siguiente}",
+                )
+
+        st.markdown("#### 6) Idoneidad, supervisión y firmas")
+        idoneidad = st.text_area(
+            "Idoneidad *",
+            value=defaults.get("idoneidad", ""),
+            help="Variable: {{idoneidad}}",
+        )
+        equivalencias = st.text_area(
+            "Equivalencias",
+            value=defaults.get("equivalencias", ""),
+            help="Variable: {{equivalencias}}",
+        )
+        supervision = st.text_area(
+            "Supervisión *",
+            value=defaults.get("supervision", ""),
+            help="Variable: {{supervision}}",
+        )
+        nombrefirma = st.text_input(
+            "Nombre para firma *",
+            value=defaults.get("nombrefirma", ""),
+            help="Variable: {{nombrefirma}}",
+        )
 
         c1, c2 = st.columns(2)
         guardar_borrador = c1.form_submit_button("💾 Guardar borrador")
         cargar_registro = c2.form_submit_button("✅ Usar este registro")
 
     form_data = {
-        "dependencia": dependencia,
-        "fecha_solicitud": fecha_solicitud,
+        "contratista": contratista,
+        "descripcion": descripcion,
+        "numeroproyecto": numeroproyecto,
+        "nombreproyectoinversion": nombreproyectoinversion,
         "objeto": objeto,
-        "modalidad": modalidad,
-        "plazo_inicio": plazo_inicio,
-        "plazo_fin": plazo_fin,
-        "supervisor": supervisor,
-        "valor_estimado": valor_estimado,
-        "observaciones": observaciones,
+        "tipo": tipo,
+        "unspsc": unspsc,
+        "segmento": segmento,
+        "familia": familia,
+        "clase": clase,
+        "plazo": plazo,
+        "valor": valor,
+        "forma": forma,
+        **obligaciones,
+        "idoneidad": idoneidad,
+        "equivalencias": equivalencias,
+        "supervision": supervision,
+        "nombrefirma": nombrefirma,
+        "dependencia": dependencia,
+        "elaboro": elaboro,
     }
     errores = validar_formulario(form_data)
 
-    if "dependencia" in errores:
-        st.error(f"Dependencia: {errores['dependencia']}")
-    if "objeto" in errores:
-        st.error(f"Objeto contractual: {errores['objeto']}")
-    if "plazo" in errores:
-        st.error(f"Plazo: {errores['plazo']}")
-    if "modalidad" in errores:
-        st.error(f"Modalidad: {errores['modalidad']}")
-    if "supervisor" in errores:
-        st.error(f"Supervisor: {errores['supervisor']}")
-    if "valor_estimado" in errores:
-        st.error(f"Valor estimado: {errores['valor_estimado']}")
+    if errores and cargar_registro:
+        with st.expander("⚠️ Validaciones pendientes", expanded=True):
+            for mensaje in errores.values():
+                st.error(mensaje)
 
     if guardar_borrador:
         st.session_state.form_borrador = form_data
         registrar_evento_auditoria(
             "Guardar borrador",
             actor_actual,
-            "Se guardó el borrador del formulario guiado.",
+            "Se guardó el borrador del formulario guiado con variables de la plantilla.",
         )
         st.success("✅ Borrador guardado en la sesión actual.")
 
