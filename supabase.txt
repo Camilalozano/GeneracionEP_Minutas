@@ -12,3 +12,16 @@ ADMIN_PASSWORD = "CAMBIA_ESTA_CLAVE"
 Tablas usadas por la aplicación:
 - EstudiosPrevios
 - BitacoraAuditoria
+
+Opcionalmente puedes sobreescribir nombres si tu tabla fue creada con una variante o typo:
+
+SUPABASE_TABLE_ESTUDIOS = "EstudiosPrevios"
+SUPABASE_TABLE_BITACORA = "BitacoraAuditoria"
+
+Si ves error 404 en BitacoraAuditoria, verifica que el nombre de la tabla en Supabase
+sea exactamente BitacoraAuditoria. En algunas capturas puede verse como BitacoraAditoria;
+si ese es el nombre real, renombra la tabla o configura SUPABASE_TABLE_BITACORA con ese valor exacto.
+
+Si ves error 400 en EstudiosPrevios, normalmente falta alguna columna que la app envía
+o hay un tipo de dato incompatible. Revisa el detalle que muestra la app y crea/corrige
+la columna indicada en Supabase.

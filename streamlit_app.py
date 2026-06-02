@@ -10,6 +10,7 @@ from pathlib import Path
 import uuid
 import hashlib
 import os
+from urllib.parse import quote
 
 import requests
 
@@ -314,11 +315,26 @@ def obtener_valor_configuracion(nombre):
 
 def obtener_configuracion_supabase():
     """Lee la configuración de Supabase desde secretos o variables de entorno."""
-    url = obtener_valor_configuracion("SUPABASE_URL")
-    key = obtener_valor_configuracion("SUPABASE_PUBLISHABLE_KEY")
+    url = obtener_valor_configuracion("SUPABASE_URL") or obtener_valor_configuracion(
+        "NEXT_PUBLIC_SUPABASE_URL"
+    )
+    key = obtener_valor_configuracion("SUPABASE_PUBLISHABLE_KEY") or obtener_valor_configuracion(
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+    )
     admin_password = obtener_valor_configuracion("ADMIN_PASSWORD")
 
     return str(url).strip().rstrip("/"), str(key).strip(), str(admin_password).strip()
+
+
+def obtener_tablas_supabase():
+    """Permite sobreescribir nombres de tablas si en Supabase tienen otro nombre exacto."""
+    tabla_estudios = obtener_valor_configuracion("SUPABASE_TABLE_ESTUDIOS")
+    tabla_bitacora = obtener_valor_configuracion("SUPABASE_TABLE_BITACORA")
+
+    return (
+        str(tabla_estudios or SUPABASE_TABLE_ESTUDIOS).strip(),
+        str(tabla_bitacora or SUPABASE_TABLE_BITACORA).strip(),
+    )
 
 
 def supabase_configurado():
@@ -370,7 +386,7 @@ def supabase_request(metodo, tabla, payload=None, params=None):
             "Faltan SUPABASE_URL y SUPABASE_PUBLISHABLE_KEY en los secretos de Streamlit."
         )
 
-    endpoint = f"{url}/rest/v1/{tabla}"
+    endpoint = f"{url}/rest/v1/{quote(tabla, safe='')}"
     headers = {
         "apikey": key,
         "Authorization": f"Bearer {key}",
@@ -388,7 +404,13 @@ def supabase_request(metodo, tabla, payload=None, params=None):
         params=params,
         timeout=20,
     )
-    response.raise_for_status()
+    if not response.ok:
+        detalle = response.text.strip() or response.reason
+        raise ValueError(
+            f"Supabase respondió {response.status_code} para la tabla '{tabla}'. "
+            f"Detalle: {detalle[:800]}"
+        )
+
     return response
 
 
@@ -397,18 +419,20 @@ def guardar_estudios_previos_supabase(registros, actor=None):
     if not registros:
         return 0
 
+    tabla_estudios, _ = obtener_tablas_supabase()
     payload = [normalizar_registro_estudios(registro) for registro in registros]
-    supabase_request("POST", SUPABASE_TABLE_ESTUDIOS, payload)
+    supabase_request("POST", tabla_estudios, payload)
     return len(payload)
 
 
 def guardar_bitacora_supabase(evento):
     """Guarda un evento de auditoría en BitacoraAuditoria."""
+    _, tabla_bitacora = obtener_tablas_supabase()
     payload = {
         columna: normalizar_valor_supabase(columna, evento.get(columna, ""))
         for columna in SUPABASE_COLUMNAS_BITACORA
     }
-    supabase_request("POST", SUPABASE_TABLE_BITACORA, payload)
+    supabase_request("POST", tabla_bitacora, payload)
 
 
 def consultar_tabla_supabase(tabla, columnas="*", orden=None):
@@ -1041,7 +1065,8 @@ elif clave_admin == admin_password_configurada:
 
     with tab_estudios:
         try:
-            df_estudios_supabase = consultar_tabla_supabase(SUPABASE_TABLE_ESTUDIOS, orden="id.desc")
+            tabla_estudios, _ = obtener_tablas_supabase()
+            df_estudios_supabase = consultar_tabla_supabase(tabla_estudios, orden="id.desc")
             st.dataframe(df_estudios_supabase, use_container_width=True, height=260)
             st.download_button(
                 label="📥 Descargar EstudiosPrevios (CSV)",
@@ -1055,7 +1080,8 @@ elif clave_admin == admin_password_configurada:
 
     with tab_bitacora:
         try:
-            df_bitacora_supabase = consultar_tabla_supabase(SUPABASE_TABLE_BITACORA, orden="fecha_hora_utc.desc")
+            _, tabla_bitacora = obtener_tablas_supabase()
+            df_bitacora_supabase = consultar_tabla_supabase(tabla_bitacora, orden="fecha_hora_utc.desc")
             st.dataframe(df_bitacora_supabase, use_container_width=True, height=260)
             st.download_button(
                 label="📥 Descargar BitacoraAuditoria (CSV)",
