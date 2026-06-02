@@ -407,6 +407,7 @@ def guardar_bitacora_supabase(evento):
     payload = {
         columna: normalizar_valor_supabase(columna, evento.get(columna, ""))
         for columna in SUPABASE_COLUMNAS_BITACORA
+        if columna != "id_evento"
     }
     supabase_request("POST", SUPABASE_TABLE_BITACORA, payload)
 
