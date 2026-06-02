@@ -8,6 +8,7 @@ import time
 import base64
 from pathlib import Path
 import uuid
+import hmac
 
 # ============== CONFIGURACIÓN DE PÁGINA ==============
 st.set_page_config(
@@ -373,6 +374,43 @@ def disparar_descarga_automatica(zip_bytes, file_name):
         unsafe_allow_html=True,
     )
 
+
+
+def autenticar_usuario():
+    """Solicita autenticación básica usando credenciales en st.secrets."""
+    usuario_config = st.secrets.get("AUTH_USER")
+    clave_config = st.secrets.get("AUTH_PASSWORD")
+
+    if not usuario_config or not clave_config:
+        st.warning("⚠️ Autenticación deshabilitada: configura AUTH_USER y AUTH_PASSWORD en secrets.")
+        return True, "Acceso sin autenticación"
+
+    if "autenticado" not in st.session_state:
+        st.session_state.autenticado = False
+    if "usuario_autenticado" not in st.session_state:
+        st.session_state.usuario_autenticado = ""
+
+    if st.session_state.autenticado:
+        return True, st.session_state.usuario_autenticado
+
+    st.markdown("### 🔐 Iniciar sesión")
+    with st.form("login_form"):
+        usuario = st.text_input("Usuario")
+        clave = st.text_input("Contraseña", type="password")
+        ingresar = st.form_submit_button("Ingresar")
+
+    if ingresar:
+        valido = hmac.compare_digest(usuario, str(usuario_config)) and hmac.compare_digest(clave, str(clave_config))
+        if valido:
+            st.session_state.autenticado = True
+            st.session_state.usuario_autenticado = usuario
+            st.success("✅ Autenticación exitosa.")
+            st.rerun()
+        else:
+            st.error("❌ Credenciales inválidas.")
+
+    return False, ""
+
 # ============== SIDEBAR ==============
 with st.sidebar:
     st.markdown("## Generador Inteligente de Documentos")
@@ -394,10 +432,15 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+autorizado, usuario_autenticado = autenticar_usuario()
+if not autorizado:
+    st.stop()
+
 st.markdown("### 📋 Proceso de Generación")
+actor_default = st.session_state.get("actor_actual", usuario_autenticado)
 actor_actual = st.text_input(
     "👤 Responsable de la acción (usuario actual)",
-    value=st.session_state.get("actor_actual", ""),
+    value=actor_default,
     help="Este nombre se registra en la bitácora para control institucional y trazabilidad legal.",
 )
 st.session_state.actor_actual = actor_actual
