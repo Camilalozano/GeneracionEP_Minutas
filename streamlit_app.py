@@ -545,7 +545,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("### 📋 Proceso de Generación")
 actor_actual = st.text_input(
     "👤 Responsable de la acción (usuario actual)",
     value=st.session_state.get("actor_actual", ""),
