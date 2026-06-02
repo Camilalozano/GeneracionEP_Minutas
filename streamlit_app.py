@@ -15,7 +15,7 @@ import requests
 
 # ============== CONFIGURACIÓN DE PÁGINA ==============
 st.set_page_config(
-    page_title="ATENEA: Generador Estudios Previos y Minutas",
+    page_title="Atenea: Generador inteligente de Estudios Previos",
     page_icon="Generador de Documentos",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -540,8 +540,8 @@ with st.sidebar:
 # Header
 st.markdown("""
 <div class="main-header">
-    <h1 class="main-title" style="color: white;">ATENEA: Generador Inteligente de Documentos</h1>
-    <p class="subtitle">Estudios Previos y Minutas | Gerencia de Gestión Corporativa</p>
+    <h1 class="main-title" style="color: white;">Atenea: Generador inteligente de Estudios Previos</h1>
+    <p class="subtitle">Estudios Previos | Gerencia de Gestión Corporativa</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -553,20 +553,6 @@ actor_actual = st.text_input(
 )
 st.session_state.actor_actual = actor_actual
 
-col1, col2, col3 = st.columns(3)
-for col, paso, titulo, texto in [
-    (col1, "Paso 1", "🧾 Capturar Datos", "Diligencia formulario guiado o carga Excel"),
-    (col2, "Paso 2", "📝 Cargar Plantilla", "Sube plantilla Word con placeholders"),
-    (col3, "Paso 3", "🚀 Generar", "Genera y descarga tus documentos"),
-]:
-    with col:
-        st.markdown(f"""
-        <div class="stat-card">
-            <span class="step-badge">{paso}</span>
-            <h4 style="margin: 1rem 0 0.5rem 0;">{titulo}</h4>
-            <p style="color: #64748b; font-size: 0.9rem;">{texto}</p>
-        </div>
-        """, unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("### 📁 Captura de datos")
@@ -880,29 +866,11 @@ plantilla_precargada, nombre_plantilla_precargada = cargar_plantilla_precargada(
 
 if plantilla_precargada:
     st.success(f"✅ Plantilla precargada disponible: {nombre_plantilla_precargada}")
+    st.info("ℹ️ Se usará siempre la plantilla precargada por defecto.")
 else:
-    st.warning("⚠️ No se encontró la plantilla precargada. Sube una plantilla para continuar.")
+    st.warning("⚠️ No se encontró la plantilla precargada Plantilla.docx.")
 
-word_file_upload = st.file_uploader(
-    "Opcional: sube otra plantilla Word para reemplazar la plantilla por defecto",
-    type="docx",
-    key="word",
-    help="Si no subes archivo, se usará la plantilla institucional precargada."
-)
-
-if word_file_upload:
-    word_file = word_file_upload
-    registrar_evento_auditoria(
-        "Cargar plantilla personalizada",
-        actor_actual,
-        f"Se seleccionó plantilla Word personalizada: {word_file.name}.",
-        obtener_id_caso_desde_codigo_objeto(df),
-    )
-    st.success(f"✅ Plantilla personalizada seleccionada: {word_file.name}")
-else:
-    word_file = plantilla_precargada
-    if word_file:
-        st.info("ℹ️ Se usará la plantilla precargada por defecto.")
+word_file = plantilla_precargada
 
 if df is not None and word_file:
     with st.expander("👀 Vista previa de datos", expanded=True):
