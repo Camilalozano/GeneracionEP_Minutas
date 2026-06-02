@@ -15,6 +15,7 @@ Esta herramienta permite automatizar la creación de documentos mediante:
 - Vista previa de datos antes de generar
 - Generación masiva de documentos con barra de progreso
 - Descarga de documentos generados en formato ZIP
+- Guardado automático de documentos `.docx` en Supabase Storage privado
 
 **Ideal para:** certificados, contratos, cartas, actas, informes y cualquier documento que necesite personalizarse masivamente.
 
@@ -35,6 +36,7 @@ Esta herramienta permite automatizar la creación de documentos mediante:
 | python-docx | Manipulación de documentos Word |
 | pandas | Procesamiento de datos Excel |
 | openpyxl | Motor para archivos .xlsx |
+| Supabase Storage | Almacenamiento privado de documentos generados |
 
 ---
 
@@ -87,6 +89,43 @@ Certificamos que {{nombre}} desempeña el cargo de {{cargo}} desde el {{fecha}}.
 1. Sube ambos archivos en la aplicación
 2. Haz clic en "Generar Documentos"
 3. Descarga el ZIP con todos los documentos personalizados
+
+
+---
+
+## Guardado de documentos en Supabase
+
+La aplicación puede guardar automáticamente cada plantilla diligenciada `.docx` en un bucket privado de Supabase Storage y registrar sus metadatos en la tabla `DocumentosGenerados`.
+
+### 1. Configura el bucket
+
+Crea un bucket privado en Supabase Storage llamado:
+
+```text
+documentos-generados
+```
+
+### 2. Configura la tabla de metadatos
+
+La aplicación usa la tabla `DocumentosGenerados` para registrar `storage_bucket`, `storage_path`, `nombre_archivo`, `mime_type`, `size_bytes`, `sha256`, `actor` y `fecha_hora_utc`. Si `id_caso` está definido como identity primary key, la app lo omite para que Supabase lo genere automáticamente.
+
+### 3. Configura secretos
+
+En `.streamlit/secrets.toml` o en Streamlit Cloud > App settings > Secrets agrega:
+
+```toml
+SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "TU_SUPABASE_PUBLISHABLE_KEY"
+SUPABASE_SERVICE_ROLE_KEY = "TU_SUPABASE_SERVICE_ROLE_KEY"
+SUPABASE_BUCKET_DOCUMENTOS = "documentos-generados"
+ADMIN_PASSWORD = "CAMBIA_ESTA_CLAVE"
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` debe mantenerse únicamente como secreto porque permite escribir en el bucket privado y en las tablas configuradas.
+
+### 4. Genera documentos
+
+Al hacer clic en **Generar Documentos**, la app mantiene la descarga ZIP y además sube cada `.docx` al bucket privado. El panel administrativo incluye una pestaña **Documentos generados** para consultar y descargar el CSV de metadatos.
 
 ---
 
