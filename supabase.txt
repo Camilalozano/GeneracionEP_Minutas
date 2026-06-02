@@ -1,0 +1,9 @@
+BitacoraAuditoria
+NEXT_PUBLIC_SUPABASE_URL=https://zwpmdgpywgypdmqygsvv.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_fplMOO2Il-dnMAvrMr8vVQ_k5sDqMWD
+
+EstudiosPrevios
+NEXT_PUBLIC_SUPABASE_URL=https://zwpmdgpywgypdmqygsvv.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_fplMOO2Il-dnMAvrMr8vVQ_k5sDqMWD
+
+clave: minutas2026
