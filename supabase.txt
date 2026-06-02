@@ -1,9 +1,14 @@
-BitacoraAuditoria
-NEXT_PUBLIC_SUPABASE_URL=https://zwpmdgpywgypdmqygsvv.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_fplMOO2Il-dnMAvrMr8vVQ_k5sDqMWD
+# Configuración de Supabase
 
-EstudiosPrevios
-NEXT_PUBLIC_SUPABASE_URL=https://zwpmdgpywgypdmqygsvv.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_fplMOO2Il-dnMAvrMr8vVQ_k5sDqMWD
+No guardes credenciales reales en este archivo ni en GitHub.
 
-clave: minutas2026
+Configura estos valores en `.streamlit/secrets.toml` para desarrollo local o en
+Streamlit Cloud > App settings > Secrets para producción:
+
+SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "TU_SUPABASE_PUBLISHABLE_KEY"
+ADMIN_PASSWORD = "CAMBIA_ESTA_CLAVE"
+
+Tablas usadas por la aplicación:
+- EstudiosPrevios
+- BitacoraAuditoria

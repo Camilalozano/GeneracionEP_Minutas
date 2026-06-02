@@ -8,6 +8,10 @@ import time
 import base64
 from pathlib import Path
 import uuid
+import hashlib
+import os
+
+import requests
 
 # ============== CONFIGURACIÓN DE PÁGINA ==============
 st.set_page_config(
@@ -283,6 +287,140 @@ def validar_formulario(data):
     return errores
 
 
+SUPABASE_TABLE_ESTUDIOS = "EstudiosPrevios"
+SUPABASE_TABLE_BITACORA = "BitacoraAuditoria"
+SUPABASE_COLUMNAS_ESTUDIOS = ["id", *PLANTILLA_VARIABLES]
+SUPABASE_COLUMNAS_BITACORA = [
+    "id_evento",
+    "ID_Caso",
+    "fecha_hora_utc",
+    "actor",
+    "accion",
+    "detalle",
+]
+SUPABASE_COLUMNAS_ENTERAS = {"id", "numeroproyecto"}
+SUPABASE_COLUMNAS_FECHA = {"hoy", "fecha_hora_utc"}
+
+
+def obtener_valor_configuracion(nombre):
+    """Obtiene un valor desde st.secrets o variables de entorno sin romper la app."""
+    try:
+        valor = st.secrets.get(nombre, "")
+    except Exception:
+        valor = ""
+
+    return valor or os.getenv(nombre, "")
+
+
+def obtener_configuracion_supabase():
+    """Lee la configuración de Supabase desde secretos o variables de entorno."""
+    url = obtener_valor_configuracion("SUPABASE_URL")
+    key = obtener_valor_configuracion("SUPABASE_PUBLISHABLE_KEY")
+    admin_password = obtener_valor_configuracion("ADMIN_PASSWORD")
+
+    return str(url).strip().rstrip("/"), str(key).strip(), str(admin_password).strip()
+
+
+def supabase_configurado():
+    url, key, _ = obtener_configuracion_supabase()
+    return bool(url and key)
+
+
+def normalizar_valor_supabase(columna, valor):
+    """Convierte valores de formulario/Excel a formatos compatibles con Supabase."""
+    if pd.isna(valor):
+        return None
+
+    if hasattr(valor, "isoformat") and columna in SUPABASE_COLUMNAS_FECHA:
+        return valor.isoformat()
+
+    texto = str(valor).strip()
+    if not texto:
+        return None
+
+    if columna in SUPABASE_COLUMNAS_ENTERAS:
+        try:
+            return int(float(texto.replace(",", "")))
+        except ValueError:
+            return None
+
+    if columna in SUPABASE_COLUMNAS_FECHA:
+        fecha = pd.to_datetime(texto, errors="coerce")
+        if pd.notna(fecha):
+            return fecha.isoformat()
+
+    return texto
+
+
+def normalizar_registro_estudios(origen):
+    """Prepara un registro para insertarlo en la tabla EstudiosPrevios."""
+    registro = {}
+    for columna in SUPABASE_COLUMNAS_ESTUDIOS:
+        if columna == "id":
+            continue
+        registro[columna] = normalizar_valor_supabase(columna, origen.get(columna, ""))
+    return registro
+
+
+def supabase_request(metodo, tabla, payload=None, params=None):
+    """Ejecuta una petición REST contra Supabase."""
+    url, key, _ = obtener_configuracion_supabase()
+    if not url or not key:
+        raise ValueError(
+            "Faltan SUPABASE_URL y SUPABASE_PUBLISHABLE_KEY en los secretos de Streamlit."
+        )
+
+    endpoint = f"{url}/rest/v1/{tabla}"
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    if metodo.upper() == "POST":
+        headers["Prefer"] = "return=minimal"
+
+    response = requests.request(
+        metodo,
+        endpoint,
+        headers=headers,
+        json=payload,
+        params=params,
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response
+
+
+def guardar_estudios_previos_supabase(registros, actor=None):
+    """Guarda uno o varios registros capturados en EstudiosPrevios."""
+    if not registros:
+        return 0
+
+    payload = [normalizar_registro_estudios(registro) for registro in registros]
+    supabase_request("POST", SUPABASE_TABLE_ESTUDIOS, payload)
+    return len(payload)
+
+
+def guardar_bitacora_supabase(evento):
+    """Guarda un evento de auditoría en BitacoraAuditoria."""
+    payload = {
+        columna: normalizar_valor_supabase(columna, evento.get(columna, ""))
+        for columna in SUPABASE_COLUMNAS_BITACORA
+    }
+    supabase_request("POST", SUPABASE_TABLE_BITACORA, payload)
+
+
+def consultar_tabla_supabase(tabla, columnas="*", orden=None):
+    """Consulta una tabla completa desde Supabase para reportes administrativos."""
+    params = {"select": columnas}
+    if orden:
+        params["order"] = orden
+
+    response = supabase_request("GET", tabla, params=params)
+    return pd.DataFrame(response.json())
+
+
 def construir_dataframe_desde_formulario(data):
     fila = {campo: str(data.get(campo, "")).strip() for campo in PLANTILLA_VARIABLES}
     return pd.DataFrame([fila], columns=PLANTILLA_VARIABLES)
@@ -318,6 +456,8 @@ if "descarga_automatica_pendiente" not in st.session_state:
     st.session_state.descarga_automatica_pendiente = False
 if "auditoria_acciones" not in st.session_state:
     st.session_state.auditoria_acciones = []
+if "excel_guardado_hash" not in st.session_state:
+    st.session_state.excel_guardado_hash = ""
 
 
 def obtener_id_caso_desde_codigo_objeto(origen=None):
@@ -334,16 +474,21 @@ def obtener_id_caso_desde_codigo_objeto(origen=None):
 
 
 def registrar_evento_auditoria(accion, actor, detalle, id_caso=None):
-    st.session_state.auditoria_acciones.append(
-        {
-            "id_evento": str(uuid.uuid4())[:8],
-            "ID_Caso": id_caso or obtener_id_caso_desde_codigo_objeto(),
-            "fecha_hora_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            "actor": actor if actor else "No especificado",
-            "accion": accion,
-            "detalle": detalle,
-        }
-    )
+    evento = {
+        "id_evento": str(uuid.uuid4())[:8],
+        "ID_Caso": id_caso or obtener_id_caso_desde_codigo_objeto(),
+        "fecha_hora_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "actor": actor if actor else "No especificado",
+        "accion": accion,
+        "detalle": detalle,
+    }
+    st.session_state.auditoria_acciones.append(evento)
+
+    if supabase_configurado():
+        try:
+            guardar_bitacora_supabase(evento)
+        except Exception as error:
+            st.warning(f"No fue posible guardar la bitácora en Supabase: {error}")
 
 
 def cargar_plantilla_precargada():
@@ -385,6 +530,11 @@ with st.sidebar:
         <p><strong>Gerencia de Gestión Corporativa</p>
     </div>
     """, unsafe_allow_html=True)
+
+    if supabase_configurado():
+        st.success("✅ Supabase configurado")
+    else:
+        st.warning("⚠️ Supabase no configurado. Revisa los secretos de Streamlit.")
 
 # Header
 st.markdown("""
@@ -674,6 +824,12 @@ if modo_captura == "Formulario guiado (principal)":
             st.warning("⚠️ Corrige las validaciones antes de usar el registro.")
         else:
             st.session_state.df_captura = construir_dataframe_desde_formulario(form_data)
+            if supabase_configurado():
+                try:
+                    guardar_estudios_previos_supabase([form_data], actor_actual)
+                    st.info("💾 Registro guardado en Supabase (EstudiosPrevios).")
+                except Exception as error:
+                    st.error(f"No fue posible guardar el registro en Supabase: {error}")
             registrar_evento_auditoria(
                 "Cargar registro",
                 actor_actual,
@@ -698,7 +854,16 @@ else:
     )
     if excel_file:
         try:
-            df = pd.read_excel(excel_file)
+            excel_bytes = excel_file.getvalue()
+            excel_hash = hashlib.sha256(excel_bytes).hexdigest()
+            df = pd.read_excel(io.BytesIO(excel_bytes))
+
+            if supabase_configurado() and st.session_state.excel_guardado_hash != excel_hash:
+                registros_excel = df.fillna("").to_dict(orient="records")
+                guardados = guardar_estudios_previos_supabase(registros_excel, actor_actual)
+                st.session_state.excel_guardado_hash = excel_hash
+                st.info(f"💾 {guardados} registros guardados en Supabase (EstudiosPrevios).")
+
             registrar_evento_auditoria(
                 "Cargar Excel",
                 actor_actual,
@@ -856,6 +1021,53 @@ if st.session_state.resultado_zip:
         with st.expander(f"⚠️ Ver {len(st.session_state.resultado_errores)} errores"):
             for error in st.session_state.resultado_errores:
                 st.warning(error)
+
+st.markdown("---")
+st.markdown("### 🔐 Panel administrativo de Supabase")
+st.caption(
+    "Consulta y descarga la información guardada en EstudiosPrevios y BitacoraAuditoria. "
+    "Este panel requiere la clave ADMIN_PASSWORD configurada en los secretos de Streamlit."
+)
+
+_, _, admin_password_configurada = obtener_configuracion_supabase()
+clave_admin = st.text_input("Clave de administrador", type="password")
+
+if not supabase_configurado():
+    st.info("Configura SUPABASE_URL y SUPABASE_PUBLISHABLE_KEY para habilitar este panel.")
+elif not admin_password_configurada:
+    st.warning("Configura ADMIN_PASSWORD en los secretos de Streamlit para habilitar descargas administrativas.")
+elif clave_admin == admin_password_configurada:
+    tab_estudios, tab_bitacora = st.tabs(["📄 Estudios previos", "🧾 Bitácora"])
+
+    with tab_estudios:
+        try:
+            df_estudios_supabase = consultar_tabla_supabase(SUPABASE_TABLE_ESTUDIOS, orden="id.desc")
+            st.dataframe(df_estudios_supabase, use_container_width=True, height=260)
+            st.download_button(
+                label="📥 Descargar EstudiosPrevios (CSV)",
+                data=df_estudios_supabase.to_csv(index=False).encode("utf-8"),
+                file_name=f"EstudiosPrevios_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        except Exception as error:
+            st.error(f"No fue posible consultar EstudiosPrevios en Supabase: {error}")
+
+    with tab_bitacora:
+        try:
+            df_bitacora_supabase = consultar_tabla_supabase(SUPABASE_TABLE_BITACORA, orden="fecha_hora_utc.desc")
+            st.dataframe(df_bitacora_supabase, use_container_width=True, height=260)
+            st.download_button(
+                label="📥 Descargar BitacoraAuditoria (CSV)",
+                data=df_bitacora_supabase.to_csv(index=False).encode("utf-8"),
+                file_name=f"BitacoraAuditoria_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        except Exception as error:
+            st.error(f"No fue posible consultar BitacoraAuditoria en Supabase: {error}")
+elif clave_admin:
+    st.error("Clave de administrador incorrecta.")
 
 st.markdown("---")
 st.markdown("### 🧾 Bitácora de auditoría del caso")
