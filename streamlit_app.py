@@ -1036,22 +1036,3 @@ elif clave_admin == admin_password_configurada:
             st.error(f"No fue posible consultar BitacoraAuditoria en Supabase: {error}")
 elif clave_admin:
     st.error("Clave de administrador incorrecta.")
-
-st.markdown("---")
-st.markdown("### 🧾 Bitácora de auditoría del caso")
-st.caption(
-    "Registro de acciones para control institucional, responsabilidad legal y reconstrucción histórica del proceso."
-)
-
-if st.session_state.auditoria_acciones:
-    df_auditoria = pd.DataFrame(st.session_state.auditoria_acciones)
-    st.dataframe(df_auditoria, use_container_width=True, height=220)
-    st.download_button(
-        label="📥 Descargar bitácora de auditoría (CSV)",
-        data=df_auditoria.to_csv(index=False).encode("utf-8"),
-        file_name=f"auditoria_caso_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-else:
-    st.info("Aún no hay acciones registradas en esta sesión.")
