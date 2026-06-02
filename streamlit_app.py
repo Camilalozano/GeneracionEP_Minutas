@@ -10,6 +10,9 @@ from pathlib import Path
 import uuid
 import hashlib
 import os
+import re
+import unicodedata
+from urllib.parse import quote
 
 import requests
 
@@ -150,10 +153,11 @@ def generar_vista_previa_documento(df, word_file, indice=0):
     return doc, guardar_documento_en_bytes(doc)
 
 
-def generar_documentos(df, word_file, progress_bar, status_text):
+def generar_documentos(df, word_file, progress_bar, status_text, actor=None, guardar_en_supabase=True):
     try:
         zip_buffer = io.BytesIO()
         documentos_generados = 0
+        documentos_guardados_supabase = 0
         errores = []
         total = len(df)
 
@@ -162,8 +166,27 @@ def generar_documentos(df, word_file, progress_bar, status_text):
                 try:
                     doc = diligenciar_documento(word_file, row)
                     doc_bytes = guardar_documento_en_bytes(doc)
-                    zipf.writestr(f"Documento_{idx + 1}.docx", doc_bytes.getvalue())
+                    contenido_docx = doc_bytes.getvalue()
+                    nombre_archivo = f"Documento_{idx + 1}.docx"
+                    zipf.writestr(nombre_archivo, contenido_docx)
                     documentos_generados += 1
+
+                    if guardar_en_supabase and supabase_storage_configurado():
+                        try:
+                            metadata = guardar_documento_generado_supabase(
+                                row,
+                                idx,
+                                nombre_archivo,
+                                contenido_docx,
+                                actor,
+                            )
+                            if metadata:
+                                documentos_guardados_supabase += 1
+                        except Exception as error_supabase:
+                            errores.append(
+                                f"Fila {idx + 1}: documento generado, "
+                                f"pero no se guardó en Supabase Storage: {error_supabase}"
+                            )
 
                     progress = (idx + 1) / total
                     progress_bar.progress(progress)
@@ -173,7 +196,7 @@ def generar_documentos(df, word_file, progress_bar, status_text):
                     errores.append(f"Fila {idx + 1}: {str(e)}")
 
         status_text.text("✅ ¡Proceso completado!")
-        return zip_buffer, documentos_generados, errores
+        return zip_buffer, documentos_generados, errores, documentos_guardados_supabase
 
     except Exception as e:
         raise Exception(f"Error procesando documentos: {str(e)}")
@@ -289,6 +312,9 @@ def validar_formulario(data):
 
 SUPABASE_TABLE_ESTUDIOS = "EstudiosPrevios"
 SUPABASE_TABLE_BITACORA = "BitacoraAuditoria"
+SUPABASE_TABLE_DOCUMENTOS = "DocumentosGenerados"
+SUPABASE_BUCKET_DOCUMENTOS_DEFAULT = "documentos-generados"
+MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 SUPABASE_COLUMNAS_ESTUDIOS = ["id", *PLANTILLA_VARIABLES]
 SUPABASE_COLUMNAS_BITACORA = [
     "id_evento",
@@ -324,6 +350,93 @@ def obtener_configuracion_supabase():
 def supabase_configurado():
     url, key, _ = obtener_configuracion_supabase()
     return bool(url and key)
+
+
+def obtener_bucket_documentos_supabase():
+    """Obtiene el bucket de Storage para documentos generados."""
+    bucket = obtener_valor_configuracion("SUPABASE_BUCKET_DOCUMENTOS")
+    return str(bucket or SUPABASE_BUCKET_DOCUMENTOS_DEFAULT).strip()
+
+
+def obtener_clave_storage_supabase():
+    """Obtiene la service role key requerida para escribir en un bucket privado."""
+    return str(obtener_valor_configuracion("SUPABASE_SERVICE_ROLE_KEY")).strip()
+
+
+def supabase_storage_configurado():
+    url, _, _ = obtener_configuracion_supabase()
+    return bool(url and obtener_clave_storage_supabase() and obtener_bucket_documentos_supabase())
+
+
+def limpiar_segmento_ruta(valor, fallback="sin-valor"):
+    """Normaliza texto para usarlo como segmento seguro en rutas de Storage."""
+    texto = str(valor or "").strip()
+    if not texto:
+        texto = fallback
+
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(caracter for caracter in texto if not unicodedata.combining(caracter))
+    texto = re.sub(r"[^A-Za-z0-9._-]+", "-", texto).strip("-._")
+    return texto[:80] or fallback
+
+
+def construir_ruta_documento_storage(row, idx, nombre_archivo):
+    """Construye una ruta única y legible para el documento en Supabase Storage."""
+    fecha = datetime.utcnow().strftime("%Y/%m/%d")
+    id_caso = limpiar_segmento_ruta(row.get("codigo_objeto", "SIN-CODIGO-OBJETO"), "SIN-CODIGO-OBJETO")
+    nombre_seguro = limpiar_segmento_ruta(nombre_archivo, f"Documento_{idx + 1}.docx")
+    sufijo = datetime.utcnow().strftime("%H%M%S")
+    identificador = uuid.uuid4().hex[:8]
+    return f"estudios-previos/{fecha}/{id_caso}/fila-{idx + 1}-{sufijo}-{identificador}-{nombre_seguro}"
+
+
+def subir_documento_storage(ruta_storage, contenido_docx):
+    """Sube un archivo .docx al bucket privado de Supabase Storage."""
+    url, _, _ = obtener_configuracion_supabase()
+    key = obtener_clave_storage_supabase()
+    bucket = obtener_bucket_documentos_supabase()
+
+    if not url or not key or not bucket:
+        raise ValueError(
+            "Faltan SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY/SUPABASE_PUBLISHABLE_KEY "
+            "o SUPABASE_BUCKET_DOCUMENTOS para guardar archivos en Storage."
+        )
+
+    endpoint = f"{url}/storage/v1/object/{quote(bucket, safe='')}/{quote(ruta_storage, safe='/')}"
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": MIME_DOCX,
+        "x-upsert": "false",
+    }
+    response = requests.post(endpoint, headers=headers, data=contenido_docx, timeout=45)
+    response.raise_for_status()
+    return response
+
+
+def guardar_metadata_documento_supabase(metadata):
+    """Guarda la referencia del documento en la tabla DocumentosGenerados."""
+    supabase_request("POST", SUPABASE_TABLE_DOCUMENTOS, [metadata])
+
+
+def guardar_documento_generado_supabase(row, idx, nombre_archivo, contenido_docx, actor=None):
+    """Sube el .docx a Storage y registra sus metadatos en Supabase."""
+    ruta_storage = construir_ruta_documento_storage(row, idx, nombre_archivo)
+    subir_documento_storage(ruta_storage, contenido_docx)
+
+    metadata = {
+        # La tabla creada tiene id_caso como identity primary key; se omite para que Supabase lo genere.
+        "storage_bucket": obtener_bucket_documentos_supabase(),
+        "storage_path": ruta_storage,
+        "nombre_archivo": nombre_archivo,
+        "mime_type": MIME_DOCX,
+        "size_bytes": str(len(contenido_docx)),
+        "sha256": hashlib.sha256(contenido_docx).hexdigest(),
+        "actor": actor if actor else "No especificado",
+        "fecha_hora_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    guardar_metadata_documento_supabase(metadata)
+    return metadata
 
 
 def normalizar_valor_supabase(columna, valor):
@@ -364,10 +477,12 @@ def normalizar_registro_estudios(origen):
 
 def supabase_request(metodo, tabla, payload=None, params=None):
     """Ejecuta una petición REST contra Supabase."""
-    url, key, _ = obtener_configuracion_supabase()
+    url, publishable_key, _ = obtener_configuracion_supabase()
+    key = obtener_clave_storage_supabase() or publishable_key
     if not url or not key:
         raise ValueError(
-            "Faltan SUPABASE_URL y SUPABASE_PUBLISHABLE_KEY en los secretos de Streamlit."
+            "Faltan SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY/SUPABASE_PUBLISHABLE_KEY "
+            "en los secretos de Streamlit."
         )
 
     endpoint = f"{url}/rest/v1/{tabla}"
@@ -453,6 +568,8 @@ if "resultado_generados" not in st.session_state:
     st.session_state.resultado_generados = 0
 if "resultado_errores" not in st.session_state:
     st.session_state.resultado_errores = []
+if "resultado_guardados_supabase" not in st.session_state:
+    st.session_state.resultado_guardados_supabase = 0
 if "descarga_automatica_pendiente" not in st.session_state:
     st.session_state.descarga_automatica_pendiente = False
 if "auditoria_acciones" not in st.session_state:
@@ -534,6 +651,10 @@ with st.sidebar:
 
     if supabase_configurado():
         st.success("✅ Supabase configurado")
+        if supabase_storage_configurado():
+            st.success(f"🗂️ Storage: {obtener_bucket_documentos_supabase()}")
+        else:
+            st.warning("⚠️ Storage no configurado para guardar .docx. Agrega SUPABASE_SERVICE_ROLE_KEY.")
     else:
         st.warning("⚠️ Supabase no configurado. Revisa los secretos de Streamlit.")
 
@@ -942,7 +1063,13 @@ if df is not None and word_file:
         else:
             progress_bar = st.progress(0)
             status_text = st.empty()
-            zip_buffer, generados, errores = generar_documentos(df, word_file, progress_bar, status_text)
+            zip_buffer, generados, errores, guardados_supabase = generar_documentos(
+                df,
+                word_file,
+                progress_bar,
+                status_text,
+                actor_actual,
+            )
             time.sleep(0.5)
             if generados > 0:
                 zip_buffer.seek(0)
@@ -953,21 +1080,29 @@ if df is not None and word_file:
                 st.session_state.resultado_nombre = nombre_zip
                 st.session_state.resultado_generados = generados
                 st.session_state.resultado_errores = errores
+                st.session_state.resultado_guardados_supabase = guardados_supabase
                 st.session_state.descarga_automatica_pendiente = True
                 registrar_evento_auditoria(
                     "Generar documentos",
                     actor_actual,
-                    f"Se generaron {generados} documentos y {len(errores)} errores.",
+                    f"Se generaron {generados} documentos, "
+                    f"se guardaron {guardados_supabase} en Supabase Storage "
+                    f"y se registraron {len(errores)} errores.",
                     obtener_id_caso_desde_codigo_objeto(df),
                 )
 
+                if supabase_storage_configurado():
+                    st.info(f"🗂️ {guardados_supabase} documento(s) guardado(s) en Supabase Storage.")
                 st.success("✅ Documentos generados correctamente. Iniciando descarga automática...")
             else:
                 st.error("❌ No se pudieron generar documentos")
 
 if st.session_state.resultado_zip:
     st.download_button(
-        label=f"📥 Descargar resultados ({st.session_state.resultado_generados} documentos)",
+        label=(
+            f"📥 Descargar resultados ({st.session_state.resultado_generados} documentos; "
+            f"{st.session_state.resultado_guardados_supabase} guardados en Supabase)"
+        ),
         data=st.session_state.resultado_zip,
         file_name=st.session_state.resultado_nombre,
         mime="application/zip",
@@ -1005,7 +1140,11 @@ if not supabase_configurado():
 elif not admin_password_configurada:
     st.warning("Configura ADMIN_PASSWORD en los secretos de Streamlit para habilitar descargas administrativas.")
 elif clave_admin == admin_password_configurada:
-    tab_estudios, tab_bitacora = st.tabs(["📄 Estudios previos", "🧾 Bitácora"])
+    tab_estudios, tab_bitacora, tab_documentos = st.tabs([
+        "📄 Estudios previos",
+        "🧾 Bitácora",
+        "🗂️ Documentos generados",
+    ])
 
     with tab_estudios:
         try:
@@ -1034,5 +1173,19 @@ elif clave_admin == admin_password_configurada:
             )
         except Exception as error:
             st.error(f"No fue posible consultar BitacoraAuditoria en Supabase: {error}")
+
+    with tab_documentos:
+        try:
+            df_documentos_supabase = consultar_tabla_supabase(SUPABASE_TABLE_DOCUMENTOS, orden="fecha_hora_utc.desc")
+            st.dataframe(df_documentos_supabase, use_container_width=True, height=260)
+            st.download_button(
+                label="📥 Descargar DocumentosGenerados (CSV)",
+                data=df_documentos_supabase.to_csv(index=False).encode("utf-8"),
+                file_name=f"DocumentosGenerados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        except Exception as error:
+            st.error(f"No fue posible consultar DocumentosGenerados en Supabase: {error}")
 elif clave_admin:
     st.error("Clave de administrador incorrecta.")
