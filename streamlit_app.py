@@ -91,6 +91,61 @@ def replace_text_in_paragraph(paragraph, key, value):
             paragraph.add_run(replaced_text)
 
 
+def diligenciar_documento(word_file, row):
+    """Diligencia una plantilla Word con los valores de una fila de datos."""
+    word_file.seek(0)
+    doc = Document(word_file)
+
+    for paragraph in doc.paragraphs:
+        for key in row.index:
+            replace_text_in_paragraph(paragraph, key, row[key])
+
+    for table in doc.tables:
+        for row_table in table.rows:
+            for cell in row_table.cells:
+                for paragraph in cell.paragraphs:
+                    for key in row.index:
+                        replace_text_in_paragraph(paragraph, key, row[key])
+
+    return doc
+
+
+def guardar_documento_en_bytes(doc):
+    """Convierte un documento python-docx en bytes descargables."""
+    doc_bytes = io.BytesIO()
+    doc.save(doc_bytes)
+    doc_bytes.seek(0)
+    return doc_bytes
+
+
+def extraer_texto_documento(doc):
+    """Genera una vista previa textual del contenido diligenciado de un documento."""
+    bloques = []
+
+    for paragraph in doc.paragraphs:
+        texto = paragraph.text.strip()
+        if texto:
+            bloques.append(texto)
+
+    for table in doc.tables:
+        for row_table in table.rows:
+            celdas = [cell.text.strip() for cell in row_table.cells if cell.text.strip()]
+            if celdas:
+                bloques.append(" | ".join(celdas))
+
+    return "\n\n".join(bloques)
+
+
+def generar_vista_previa_documento(df, word_file, indice=0):
+    """Diligencia una sola fila para mostrarla y permitir su descarga en Streamlit."""
+    if df is None or df.empty:
+        raise ValueError("No hay datos disponibles para generar la vista previa.")
+
+    row = df.iloc[indice]
+    doc = diligenciar_documento(word_file, row)
+    return doc, guardar_documento_en_bytes(doc)
+
+
 def generar_documentos(df, word_file, progress_bar, status_text):
     try:
         zip_buffer = io.BytesIO()
@@ -101,22 +156,8 @@ def generar_documentos(df, word_file, progress_bar, status_text):
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
             for idx, row in df.iterrows():
                 try:
-                    word_file.seek(0)
-                    doc = Document(word_file)
-
-                    for paragraph in doc.paragraphs:
-                        for key in row.index:
-                            replace_text_in_paragraph(paragraph, key, row[key])
-
-                    for table in doc.tables:
-                        for row_table in table.rows:
-                            for cell in row_table.cells:
-                                for paragraph in cell.paragraphs:
-                                    for key in row.index:
-                                        replace_text_in_paragraph(paragraph, key, row[key])
-
-                    doc_bytes = io.BytesIO()
-                    doc.save(doc_bytes)
+                    doc = diligenciar_documento(word_file, row)
+                    doc_bytes = guardar_documento_en_bytes(doc)
                     zipf.writestr(f"Documento_{idx + 1}.docx", doc_bytes.getvalue())
                     documentos_generados += 1
 
@@ -709,6 +750,57 @@ if df is not None and word_file:
         st.dataframe(df, use_container_width=True, height=220)
         placeholders = " | ".join([f"`{{{{{col}}}}}`" for col in df.columns])
         st.code(placeholders, language=None)
+
+    st.markdown("### 👁️ Vista previa de la plantilla diligenciada")
+    st.caption(
+        "Puedes revisar cómo quedará la plantilla con los datos del primer registro "
+        "antes de generar el paquete completo."
+    )
+
+    preview_col1, preview_col2 = st.columns([1, 2])
+    with preview_col1:
+        registro_preview = st.number_input(
+            "Registro para previsualizar",
+            min_value=1,
+            max_value=len(df),
+            value=1,
+            step=1,
+            help="Selecciona la fila de datos que quieres usar para diligenciar la vista previa.",
+        )
+
+    try:
+        doc_preview, doc_preview_bytes = generar_vista_previa_documento(
+            df,
+            word_file,
+            int(registro_preview) - 1,
+        )
+        texto_preview = extraer_texto_documento(doc_preview)
+
+        with st.expander("📄 Ver contenido diligenciado", expanded=True):
+            if texto_preview:
+                st.text_area(
+                    "Contenido extraído de la plantilla diligenciada",
+                    value=texto_preview,
+                    height=360,
+                    disabled=True,
+                    help="Vista textual de revisión. El archivo descargable conserva el formato Word de la plantilla.",
+                )
+            else:
+                st.info(
+                    "La plantilla se diligenció, pero no se detectó texto extraíble para mostrar. "
+                    "Descarga la vista previa en Word para revisarla con formato."
+                )
+
+        with preview_col2:
+            st.download_button(
+                label="📥 Descargar vista previa diligenciada (.docx)",
+                data=doc_preview_bytes.getvalue(),
+                file_name=f"Vista_previa_documento_{int(registro_preview)}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )
+    except Exception as e:
+        st.warning(f"No fue posible generar la vista previa diligenciada: {e}")
 
     generate_btn = st.button("🚀 Generar Documentos", use_container_width=True, type="primary")
     if generate_btn:
