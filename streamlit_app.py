@@ -702,9 +702,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 actor_actual = st.text_input(
-    "👤 Responsable de la acción (usuario actual) *",
+    "👤 Responsable de la acción (usuario actual)",
     value=st.session_state.get("actor_actual", ""),
-    help="Campo obligatorio. Este nombre se registra en la bitácora para control institucional y trazabilidad legal.",
+    help="Campo opcional. Si se diligencia, este nombre se registra en la bitácora para control institucional y trazabilidad legal.",
 )
 actor_actual = actor_actual.strip()
 st.session_state.actor_actual = actor_actual
@@ -981,10 +981,6 @@ if modo_captura == "Formulario guiado (principal)":
         "aprobo": aprobo,
     }
     errores = validar_formulario(form_data)
-    responsable_obligatorio_error = "Responsable de la acción (usuario actual) es obligatorio."
-
-    if cargar_registro and not actor_actual.strip():
-        st.error(responsable_obligatorio_error)
 
     if errores and cargar_registro:
         with st.expander("⚠️ Validaciones pendientes", expanded=True):
@@ -992,9 +988,7 @@ if modo_captura == "Formulario guiado (principal)":
                 st.error(mensaje)
 
     if cargar_registro:
-        if not actor_actual.strip():
-            st.warning("⚠️ Ingresa el responsable de la acción antes de usar el registro.")
-        elif errores:
+        if errores:
             st.warning("⚠️ Corrige las validaciones antes de usar el registro.")
         else:
             st.session_state.df_captura = construir_dataframe_desde_formulario(form_data)
@@ -1027,30 +1021,26 @@ else:
         help="Archivo Excel con múltiples registros para generación masiva"
     )
     if excel_file:
-        if not actor_actual.strip():
-            st.error("Responsable de la acción (usuario actual) es obligatorio para cargar datos por Excel.")
-            st.warning("⚠️ Ingresa el responsable de la acción antes de procesar el archivo Excel.")
-        else:
-            try:
-                excel_bytes = excel_file.getvalue()
-                excel_hash = hashlib.sha256(excel_bytes).hexdigest()
-                df = pd.read_excel(io.BytesIO(excel_bytes))
+        try:
+            excel_bytes = excel_file.getvalue()
+            excel_hash = hashlib.sha256(excel_bytes).hexdigest()
+            df = pd.read_excel(io.BytesIO(excel_bytes))
 
-                if supabase_configurado() and st.session_state.excel_guardado_hash != excel_hash:
-                    registros_excel = df.fillna("").to_dict(orient="records")
-                    guardados = guardar_estudios_previos_supabase(registros_excel, actor_actual)
-                    st.session_state.excel_guardado_hash = excel_hash
-                    st.info(f"💾 {guardados} registros guardados en Supabase (EstudiosPrevios).")
+            if supabase_configurado() and st.session_state.excel_guardado_hash != excel_hash:
+                registros_excel = df.fillna("").to_dict(orient="records")
+                guardados = guardar_estudios_previos_supabase(registros_excel, actor_actual)
+                st.session_state.excel_guardado_hash = excel_hash
+                st.info(f"💾 {guardados} registros guardados en Supabase (EstudiosPrevios).")
 
-                registrar_evento_auditoria(
-                    "Cargar Excel",
-                    actor_actual,
-                    f"Se cargó archivo Excel: {excel_file.name} con {len(df)} registros.",
-                    obtener_id_caso_desde_codigo_objeto(df),
-                )
-                st.success(f"✅ {excel_file.name}")
-            except Exception as e:
-                st.error(f"Error al leer Excel: {e}")
+            registrar_evento_auditoria(
+                "Cargar Excel",
+                actor_actual,
+                f"Se cargó archivo Excel: {excel_file.name} con {len(df)} registros.",
+                obtener_id_caso_desde_codigo_objeto(df),
+            )
+            st.success(f"✅ {excel_file.name}")
+        except Exception as e:
+            st.error(f"Error al leer Excel: {e}")
 
 st.markdown("##### 📝 Plantilla (Word)")
 plantilla_precargada, nombre_plantilla_precargada = cargar_plantilla_precargada()
@@ -1131,9 +1121,6 @@ if df is not None and word_file:
     if generate_btn:
         if df.empty:
             st.error("❌ No hay datos para procesar")
-        elif not actor_actual:
-            st.error("Responsable de la acción (usuario actual) es obligatorio para generar documentos.")
-            st.warning("⚠️ Ingresa el responsable de la acción antes de generar documentos.")
         else:
             progress_bar = st.progress(0)
             status_text = st.empty()
