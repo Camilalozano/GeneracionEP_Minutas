@@ -872,9 +872,7 @@ if modo_captura == "Formulario guiado (principal)":
                 help="Variable: {{aprobo}}",
             )
 
-        c1, c2 = st.columns(2)
-        guardar_borrador = c1.form_submit_button("💾 Guardar borrador")
-        cargar_registro = c2.form_submit_button("✅ Usar este registro")
+        cargar_registro = st.form_submit_button("✅ Usar este registro")
 
     form_data = {
         "hoy": hoy.strftime("%d/%m/%Y"),
@@ -910,23 +908,13 @@ if modo_captura == "Formulario guiado (principal)":
     errores = validar_formulario(form_data)
     responsable_obligatorio_error = "Responsable de la acción (usuario actual) es obligatorio."
 
-    if (guardar_borrador or cargar_registro) and not actor_actual.strip():
+    if cargar_registro and not actor_actual.strip():
         st.error(responsable_obligatorio_error)
 
     if errores and cargar_registro:
         with st.expander("⚠️ Validaciones pendientes", expanded=True):
             for mensaje in errores.values():
                 st.error(mensaje)
-
-    if guardar_borrador and actor_actual.strip():
-        st.session_state.form_borrador = form_data
-        registrar_evento_auditoria(
-            "Guardar borrador",
-            actor_actual,
-            "Se guardó el borrador del formulario guiado con variables de la plantilla.",
-            obtener_id_caso_desde_codigo_objeto(form_data),
-        )
-        st.success("✅ Borrador guardado en la sesión actual.")
 
     if cargar_registro:
         if not actor_actual.strip():
