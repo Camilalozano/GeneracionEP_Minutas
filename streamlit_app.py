@@ -236,7 +236,6 @@ PLANTILLA_VARIABLES = [
 
 CAMPOS_OBLIGATORIOS = [
     "hoy",
-    "contratista",
     "descripcion_necesidad",
     "numeroproyecto",
     "nombreproyectoinversion",
@@ -775,7 +774,7 @@ if modo_captura == "Formulario guiado (principal)":
                 help="Variable: {{hoy}}",
             )
             contratista = st.text_input(
-                "Contratista *",
+                "Contratista",
                 value=defaults.get("contratista", ""),
                 help="Variable: {{contratista}}",
             )
