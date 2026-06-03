@@ -417,10 +417,21 @@ def guardar_metadata_documento_supabase(metadata):
     supabase_request("POST", SUPABASE_TABLE_DOCUMENTOS, [metadata])
 
 
+def obtener_actor_responsable(actor=None):
+    """Devuelve el responsable diligenciado para usarlo como actor de auditoría."""
+    actor_parametro = str(actor or "").strip()
+    if actor_parametro:
+        return actor_parametro
+
+    actor_sesion = str(st.session_state.get("actor_actual", "")).strip()
+    return actor_sesion if actor_sesion else "No especificado"
+
+
 def guardar_documento_generado_supabase(row, idx, nombre_archivo, contenido_docx, actor=None):
     """Sube el .docx a Storage y registra sus metadatos en Supabase."""
     ruta_storage = construir_ruta_documento_storage(row, idx, nombre_archivo)
     subir_documento_storage(ruta_storage, contenido_docx)
+    actor_responsable = obtener_actor_responsable(actor)
 
     metadata = {
         # La tabla creada tiene id_caso como identity primary key; se omite para que Supabase lo genere.
@@ -430,7 +441,7 @@ def guardar_documento_generado_supabase(row, idx, nombre_archivo, contenido_docx
         "mime_type": MIME_DOCX,
         "size_bytes": str(len(contenido_docx)),
         "sha256": hashlib.sha256(contenido_docx).hexdigest(),
-        "actor": actor if actor else "No especificado",
+        "actor": actor_responsable,
         "fecha_hora_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
     }
     guardar_metadata_documento_supabase(metadata)
@@ -590,11 +601,12 @@ def obtener_id_caso_desde_codigo_objeto(origen=None):
 
 
 def registrar_evento_auditoria(accion, actor, detalle, id_caso=None):
+    actor_responsable = obtener_actor_responsable(actor)
     evento = {
         "id_evento": str(uuid.uuid4())[:8],
         "ID_Caso": id_caso or obtener_id_caso_desde_codigo_objeto(),
         "fecha_hora_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-        "actor": actor if actor else "No especificado",
+        "actor": actor_responsable,
         "accion": accion,
         "detalle": detalle,
     }
@@ -669,6 +681,7 @@ actor_actual = st.text_input(
     value=st.session_state.get("actor_actual", ""),
     help="Campo obligatorio. Este nombre se registra en la bitácora para control institucional y trazabilidad legal.",
 )
+actor_actual = actor_actual.strip()
 st.session_state.actor_actual = actor_actual
 
 
@@ -1056,6 +1069,9 @@ if df is not None and word_file:
     if generate_btn:
         if df.empty:
             st.error("❌ No hay datos para procesar")
+        elif not actor_actual:
+            st.error("Responsable de la acción (usuario actual) es obligatorio para generar documentos.")
+            st.warning("⚠️ Ingresa el responsable de la acción antes de generar documentos.")
         else:
             progress_bar = st.progress(0)
             status_text = st.empty()
