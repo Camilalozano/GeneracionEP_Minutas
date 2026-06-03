@@ -312,6 +312,9 @@ SUPABASE_TABLE_BITACORA = "BitacoraAuditoria"
 SUPABASE_TABLE_DOCUMENTOS = "DocumentosGenerados"
 SUPABASE_BUCKET_DOCUMENTOS_DEFAULT = "documentos-generados"
 MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+PLANTILLA_CARGA_MASIVA_EXCEL = "PlantillaCargaMasivaEstudiosPrevios.xlsx"
+MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 SUPABASE_COLUMNAS_ESTUDIOS = ["id", *PLANTILLA_VARIABLES]
 SUPABASE_COLUMNAS_BITACORA = [
     "id_evento",
@@ -641,6 +644,16 @@ def registrar_evento_auditoria(accion, actor, detalle, id_caso=None):
             guardar_bitacora_supabase(evento)
         except Exception as error:
             st.warning(f"No fue posible guardar la bitácora en Supabase: {error}")
+
+
+
+def cargar_plantilla_carga_masiva_excel():
+    """Carga la plantilla Excel para la carga masiva desde el repositorio."""
+    ruta = Path(PLANTILLA_CARGA_MASIVA_EXCEL)
+    if ruta.exists() and ruta.is_file():
+        return ruta.read_bytes(), ruta.name
+
+    return None, PLANTILLA_CARGA_MASIVA_EXCEL
 
 
 def cargar_plantilla_precargada():
@@ -1013,6 +1026,21 @@ if modo_captura == "Formulario guiado (principal)":
 
 else:
     st.markdown("##### 📊 Datos (Excel)")
+    st.markdown("Descarga la plantilla para carga tus datos")
+    plantilla_excel_bytes, nombre_plantilla_excel = cargar_plantilla_carga_masiva_excel()
+    if plantilla_excel_bytes:
+        st.download_button(
+            label="📥 Descargar plantilla de carga masiva",
+            data=plantilla_excel_bytes,
+            file_name=nombre_plantilla_excel,
+            mime=MIME_XLSX,
+            use_container_width=True,
+        )
+    else:
+        st.warning(
+            f"⚠️ No se encontró la plantilla de carga masiva {nombre_plantilla_excel} en el repositorio."
+        )
+
     excel_file = st.file_uploader(
         "Arrastra o selecciona tu archivo Excel",
         type="xlsx",
