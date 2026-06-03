@@ -546,6 +546,27 @@ def consultar_tabla_supabase(tabla, columnas="*", orden=None):
     return pd.DataFrame(response.json())
 
 
+def consultar_ultimo_estudio_por_codigo_objeto(codigo_objeto):
+    """Obtiene el registro más reciente de EstudiosPrevios para un código de objeto."""
+    codigo_objeto_normalizado = str(codigo_objeto or "").strip()
+    if not codigo_objeto_normalizado:
+        return None
+
+    # EstudiosPrevios guarda actualmente la fecha funcional en la columna ``hoy``.
+    # Si el esquema incorpora una columna real de auditoría/creación (por ejemplo
+    # ``fecha_hora_utc`` o ``created_at``), este orden debe cambiarse a esa columna.
+    params = {
+        "select": "*",
+        "codigo_objeto": f"eq.{codigo_objeto_normalizado}",
+        "order": "hoy.desc,id.desc",
+        "limit": "1",
+    }
+
+    response = supabase_request("GET", SUPABASE_TABLE_ESTUDIOS, params=params)
+    registros = response.json()
+    return registros[0] if registros else None
+
+
 def construir_dataframe_desde_formulario(data):
     fila = {campo: str(data.get(campo, "")).strip() for campo in PLANTILLA_VARIABLES}
     return pd.DataFrame([fila], columns=PLANTILLA_VARIABLES)
@@ -556,11 +577,15 @@ def obtener_fecha_borrador(defaults):
     if hasattr(fecha_guardada, "strftime"):
         return fecha_guardada
     if isinstance(fecha_guardada, str) and fecha_guardada.strip():
+        texto_fecha = fecha_guardada.strip()
         for formato in ("%d/%m/%Y", "%Y-%m-%d"):
             try:
-                return datetime.strptime(fecha_guardada.strip(), formato).date()
+                return datetime.strptime(texto_fecha, formato).date()
             except ValueError:
                 continue
+        fecha_iso = pd.to_datetime(texto_fecha, errors="coerce")
+        if pd.notna(fecha_iso):
+            return fecha_iso.date()
     return datetime.now().date()
 
 
@@ -701,6 +726,43 @@ if modo_captura == "Formulario guiado (principal)":
         "🧭 Diligencia los campos del formulario guiado. "
         "Cada campo corresponde a una variable disponible en la plantilla Word."
     )
+
+    defaults = st.session_state.form_borrador
+
+    st.markdown("#### Precargar desde Supabase")
+    precarga_col1, precarga_col2 = st.columns([3, 1])
+    with precarga_col1:
+        codigo_objeto_precarga = st.text_input(
+            "Código de objeto para buscar",
+            value=defaults.get("codigo_objeto", ""),
+            key="codigo_objeto_precarga",
+            help="Busca el último registro guardado en EstudiosPrevios para este código de objeto.",
+        )
+    with precarga_col2:
+        st.write("")
+        st.write("")
+        precargar_ultimo = st.button("🔎 Precargar último registro", use_container_width=True)
+
+    if precargar_ultimo:
+        codigo_objeto_normalizado = str(codigo_objeto_precarga or "").strip()
+        if not codigo_objeto_normalizado:
+            st.warning("Ingresa un código de objeto para buscar el último registro.")
+        elif not supabase_configurado():
+            st.warning("Configura SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY/SUPABASE_PUBLISHABLE_KEY para consultar Supabase.")
+        else:
+            try:
+                registro_precargado = consultar_ultimo_estudio_por_codigo_objeto(codigo_objeto_normalizado)
+                if registro_precargado:
+                    st.session_state.form_borrador = {
+                        clave: "" if valor is None else valor
+                        for clave, valor in registro_precargado.items()
+                    }
+                    st.success("Registro encontrado. Precargando el formulario...")
+                    st.rerun()
+                else:
+                    st.info("No se encontró ningún registro para ese código de objeto.")
+            except Exception as error:
+                st.error(f"No fue posible consultar el último registro en Supabase: {error}")
 
     defaults = st.session_state.form_borrador
     with st.form("formulario_guiado"):
