@@ -405,7 +405,6 @@ def subir_documento_storage(ruta_storage, contenido_docx):
     endpoint = f"{url}/storage/v1/object/{quote(bucket, safe='')}/{quote(ruta_storage, safe='/')}"
     headers = {
         "apikey": key,
-        "Authorization": f"Bearer {key}",
         "Content-Type": MIME_DOCX,
         "x-upsert": "false",
     }
@@ -499,7 +498,6 @@ def supabase_request(metodo, tabla, payload=None, params=None):
     endpoint = f"{url}/rest/v1/{tabla}"
     headers = {
         "apikey": key,
-        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
