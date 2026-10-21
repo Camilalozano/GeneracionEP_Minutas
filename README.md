@@ -147,3 +147,8 @@ automotedoc/
 - [Documentación Streamlit](https://docs.streamlit.io/)
 - [Aplicación desplegada](https://automadedoc.streamlit.app/)
 
+
+## Complemento de minutas de persona natural
+
+El formulario guiado genera ahora el estudio previo y la minuta en un mismo ZIP.
+Consulta [uso y pruebas](docs/MINUTAS.md) y [cambios propuestos de Supabase](docs/SUPABASE_MINUTAS.md).

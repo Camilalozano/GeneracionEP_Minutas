@@ -15,6 +15,8 @@ import unicodedata
 from urllib.parse import quote
 
 import requests
+from minutas import (formulario_minuta, generar_minuta, generar_pares,
+                     guardar_minuta_supabase, CONTRATO, INSTITUCION)
 
 # ============== CONFIGURACIÓN DE PÁGINA ==============
 st.set_page_config(
@@ -957,6 +959,12 @@ if modo_captura == "Formulario guiado (principal)":
                 help="Variable: {{aprobo}}",
             )
 
+        try:
+            configuracion_minuta = dict(st.secrets.get("MINUTA_INSTITUCION", {}))
+        except Exception:
+            configuracion_minuta = {}
+        datos_minuta = formulario_minuta(st, configuracion_minuta)
+
         cargar_registro = st.form_submit_button("✅ Usar este registro")
 
     form_data = {
@@ -1002,6 +1010,10 @@ if modo_captura == "Formulario guiado (principal)":
             st.warning("⚠️ Corrige las validaciones antes de usar el registro.")
         else:
             st.session_state.df_captura = construir_dataframe_desde_formulario(form_data)
+            for campo, valor in datos_minuta.items():
+                st.session_state.df_captura[campo] = str(valor).strip()
+            # A new submitted capture invalidates downloads from the previous capture.
+            st.session_state.resultado_zip = None
             if supabase_configurado():
                 try:
                     guardar_estudios_previos_supabase([form_data], actor_actual)
@@ -1066,6 +1078,24 @@ else:
             st.success(f"✅ {excel_file.name}")
         except Exception as e:
             st.error(f"Error al leer Excel: {e}")
+
+incluir_minuta = modo_captura == "Formulario guiado (principal)"
+if not incluir_minuta:
+    incluir_minuta = st.checkbox("Generar también una minuta por cada fila del Excel", value=False)
+    if incluir_minuta:
+        st.info("Agrega al Excel las columnas de la minuta. Conserva como texto los números de contrato y documentos para no perder ceros iniciales.")
+        st.code(", ".join([*CONTRATO, *INSTITUCION]), language=None)
+
+
+def persistir_minuta(row, pair_id, minuta, ep, ep_metadata, actor):
+    url, _, _ = obtener_configuracion_supabase()
+    return guardar_minuta_supabase(
+        row, pair_id, minuta, ep, ep_metadata, obtener_actor_responsable(actor),
+        url=url, key=obtener_clave_storage_supabase(),
+        bucket=obtener_bucket_documentos_supabase(), campos_ep=PLANTILLA_VARIABLES,
+        request=requests.request,
+    )
+
 
 st.markdown("##### 📝 Plantilla (Word)")
 plantilla_precargada, nombre_plantilla_precargada = cargar_plantilla_precargada()
@@ -1142,6 +1172,21 @@ if df is not None and word_file:
     except Exception as e:
         st.warning(f"No fue posible generar la vista previa diligenciada: {e}")
 
+    if incluir_minuta:
+        st.markdown("### Minuta de persona natural")
+        st.caption("El paquete incluye un estudio previo y una minuta por registro. La minuta usa la plantilla base 2026.")
+        try:
+            minuta_preview = generar_minuta(df.iloc[int(registro_preview) - 1])
+            st.download_button("Descargar vista previa de la minuta (.docx)",
+                               data=minuta_preview, file_name="Vista_previa_minuta.docx",
+                               mime=MIME_DOCX, key="preview_minuta")
+        except ValueError as error:
+            st.warning("Completa los datos de la sección 8 y pulsa «Usar este registro» para generar ambos documentos.")
+            with st.expander("Datos pendientes de la minuta"):
+                st.text(str(error))
+        if not supabase_storage_configurado():
+            st.info("Los documentos estarán disponibles para descarga. El guardado de minutas requiere configurar el acceso de servidor a Supabase.")
+
     generate_btn = st.button("🚀 Generar Documentos", use_container_width=True, type="primary")
     if generate_btn:
         if df.empty:
@@ -1149,13 +1194,21 @@ if df is not None and word_file:
         else:
             progress_bar = st.progress(0)
             status_text = st.empty()
-            zip_buffer, generados, errores, guardados_supabase = generar_documentos(
-                df,
-                word_file,
-                progress_bar,
-                status_text,
-                actor_actual,
-            )
+            if incluir_minuta:
+                zip_buffer, generados, errores, guardados_supabase = generar_pares(
+                    df, word_file, progress_bar, status_text, actor_actual,
+                    diligenciar_documento,
+                    guardar_documento_generado_supabase if supabase_storage_configurado() else None,
+                    persistir_minuta if supabase_storage_configurado() else None,
+                )
+            else:
+                zip_buffer, generados, errores, guardados_supabase = generar_documentos(
+                    df,
+                    word_file,
+                    progress_bar,
+                    status_text,
+                    actor_actual,
+                )
             time.sleep(0.5)
             if generados > 0:
                 zip_buffer.seek(0)
@@ -1181,7 +1234,10 @@ if df is not None and word_file:
                     st.info(f"🗂️ {guardados_supabase} documento(s) guardado(s) en Supabase Storage.")
                 st.success("✅ Documentos generados correctamente. Iniciando descarga automática...")
             else:
+                st.session_state.resultado_zip = None
                 st.error("❌ No se pudieron generar documentos")
+                for error in errores:
+                    st.warning(error)
 
 if st.session_state.resultado_zip:
     st.download_button(
@@ -1275,3 +1331,14 @@ elif clave_admin == admin_password_configurada:
             st.error(f"No fue posible consultar DocumentosGenerados en Supabase: {error}")
 elif clave_admin:
     st.error("Clave de administrador incorrecta.")
+# Complemento administrativo de minutas; conserva las pestañas existentes.
+if admin_password_configurada and clave_admin == admin_password_configurada and obtener_clave_storage_supabase():
+    with st.expander("Minutas generadas (Supabase)"):
+        try:
+            minutas_guardadas = consultar_tabla_supabase("MinutasGeneradas", orden="created_at.desc")
+            st.dataframe(minutas_guardadas, use_container_width=True)
+            st.download_button("Descargar registro de minutas (CSV)",
+                               minutas_guardadas.to_csv(index=False).encode("utf-8-sig"),
+                               "MinutasGeneradas.csv", "text/csv")
+        except Exception:
+            st.info("El registro de minutas requiere aplicar el esquema adicional documentado en docs/SUPABASE_MINUTAS.md.")
