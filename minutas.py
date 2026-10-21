@@ -14,32 +14,32 @@ from docx import Document
 TEMPLATE = Path(__file__).parent / 'templates/01_Plantilla_minuta_persona_natural.docx'
 VERSION = 'persona-natural-2026-v1'
 CONTRATO = {
-    'numero_contrato': 'NÃºmero de contrato (solo consecutivo)',
-    'anio_contrato': 'AÃ±o del contrato',
+    'numero_contrato': 'Número de contrato (solo consecutivo)',
+    'anio_contrato': 'Año del contrato',
     'contratista_tipo_documento': 'Tipo de documento del contratista',
-    'contratista_documento': 'NÃºmero de documento del contratista',
-    'cdp_numero': 'NÃºmero del CDP',
-    'cdp_fecha': 'Fecha del CDP (dÃ­a/mes/aÃ±o)',
+    'contratista_documento': 'Número de documento del contratista',
+    'cdp_numero': 'Número del CDP',
+    'cdp_fecha': 'Fecha del CDP (día/mes/año)',
     'cdp_expedidor': 'Cargo de quien expide el CDP',
 }
 INSTITUCION = {
-    'formato_codigo': 'CÃ³digo del formato',
-    'formato_version': 'VersiÃ³n del formato',
-    'formato_fecha_aprobacion': 'Fecha de aprobaciÃ³n del formato (dÃ­a/mes/aÃ±o)',
+    'formato_codigo': 'Código del formato',
+    'formato_version': 'Versión del formato',
+    'formato_fecha_aprobacion': 'Fecha de aprobación del formato (día/mes/año)',
     'entidad_nombre': 'Nombre de la entidad contratante',
     'entidad_nit': 'NIT de la entidad contratante',
     'ordenador_nombre': 'Nombre del ordenador del gasto',
     'ordenador_tipo_documento': 'Tipo de documento del ordenador',
-    'ordenador_documento': 'NÃºmero de documento del ordenador',
+    'ordenador_documento': 'Número de documento del ordenador',
     'ordenador_cargo': 'Cargo del ordenador',
-    'acto_delegacion': 'Acto de delegaciÃ³n (referencia completa)',
+    'acto_delegacion': 'Acto de delegación (referencia completa)',
     'acto_nombramiento': 'Acto de nombramiento (referencia completa)',
-    'acto_posesion': 'Acta de posesiÃ³n (referencia completa)',
+    'acto_posesion': 'Acta de posesión (referencia completa)',
 }
 COMPARTIDOS = ('contratista', 'tipo_contrato', 'codigo_objeto', 'objeto_contrato')
 DEFAULTS = {'formato_codigo': 'F7_P11_C', 'formato_version': '2',
             'formato_fecha_aprobacion': '09/12/2025',
-            'contratista_tipo_documento': 'cÃ©dula de ciudadanÃ­a'}
+            'contratista_tipo_documento': 'cédula de ciudadanía'}
 MESES = ('enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre').split()
 
 
@@ -52,11 +52,11 @@ def modalidad(value):
                          if not unicodedata.combining(c))
     normalized = ' '.join(normalized.split())
     accepted = {
-        'servicios profesionales': 'PRESTACIÃ“N DE SERVICIOS PROFESIONALES',
-        'prestacion de servicios profesionales': 'PRESTACIÃ“N DE SERVICIOS PROFESIONALES',
-        'apoyo a la gestion': 'PRESTACIÃ“N DE SERVICIOS DE APOYO A LA GESTIÃ“N',
-        'servicios de apoyo a la gestion': 'PRESTACIÃ“N DE SERVICIOS DE APOYO A LA GESTIÃ“N',
-        'prestacion de servicios de apoyo a la gestion': 'PRESTACIÃ“N DE SERVICIOS DE APOYO A LA GESTIÃ“N',
+        'servicios profesionales': 'PRESTACIÓN DE SERVICIOS PROFESIONALES',
+        'prestacion de servicios profesionales': 'PRESTACIÓN DE SERVICIOS PROFESIONALES',
+        'apoyo a la gestion': 'PRESTACIÓN DE SERVICIOS DE APOYO A LA GESTIÓN',
+        'servicios de apoyo a la gestion': 'PRESTACIÓN DE SERVICIOS DE APOYO A LA GESTIÓN',
+        'prestacion de servicios de apoyo a la gestion': 'PRESTACIÓN DE SERVICIOS DE APOYO A LA GESTIÓN',
     }
     if normalized.startswith('contrato de '):
         normalized = normalized[len('contrato de '):]
@@ -72,24 +72,24 @@ def validar_minuta(data):
         elif '{{' in value or '}}' in value:
             errors.append(f'{key}: reemplaza las llaves por el dato real.')
     if texto(data.get('numero_contrato')) and not re.fullmatch(r'\d+', texto(data['numero_contrato'])):
-        errors.append('NÃºmero de contrato: escribe solo el consecutivo, por ejemplo 001.')
+        errors.append('Número de contrato: escribe solo el consecutivo, por ejemplo 001.')
     if texto(data.get('anio_contrato')) and not re.fullmatch(r'20\d{2}', texto(data['anio_contrato'])):
-        errors.append('AÃ±o del contrato: usa cuatro dÃ­gitos, por ejemplo 2026.')
+        errors.append('Año del contrato: usa cuatro dígitos, por ejemplo 2026.')
     if texto(data.get('tipo_contrato')) and not modalidad(data['tipo_contrato']):
-        errors.append('La minuta admite servicios profesionales o servicios de apoyo a la gestiÃ³n.')
+        errors.append('La minuta admite servicios profesionales o servicios de apoyo a la gestión.')
     for key in ('cdp_fecha', 'formato_fecha_aprobacion'):
         if texto(data.get(key)):
             try:
                 datetime.strptime(texto(data[key]), '%d/%m/%Y')
             except ValueError:
-                errors.append(f'{key}: ingresa una fecha vÃ¡lida en formato dÃ­a/mes/aÃ±o.')
+                errors.append(f'{key}: ingresa una fecha válida en formato día/mes/año.')
     return errors
 
 
 def formulario_minuta(st, configuracion=None):
     st.markdown('#### 8) Minuta de persona natural')
-    st.caption('Se generarÃ¡n el estudio previo y la minuta con el mismo contratista y objeto. '
-               'Completa estos datos y pulsa Â«Usar este registroÂ» para aplicarlos.')
+    st.caption('Se generarán el estudio previo y la minuta con el mismo contratista y objeto. '
+               'Completa estos datos y pulsa «Usar este registro» para aplicarlos.')
     values = {}
     defaults = {**DEFAULTS, **(configuracion or {})}
     for group, fields in [('Contrato y disponibilidad presupuestal', CONTRATO),
@@ -99,8 +99,8 @@ def formulario_minuta(st, configuracion=None):
             for i, (key, label) in enumerate(fields.items()):
                 with columns[i % 2]:
                     values[key] = st.text_input(label + ' *', value=texto(defaults.get(key)), key='minuta_' + key)
-    st.caption('Las fechas de delegaciÃ³n, nombramiento, posesiÃ³n y aprobaciÃ³n del formato '
-               'no cambian automÃ¡ticamente con el aÃ±o del contrato.')
+    st.caption('Las fechas de delegación, nombramiento, posesión y aprobación del formato '
+               'no cambian automáticamente con el año del contrato.')
     return values
 
 
@@ -180,15 +180,15 @@ def generar_pares(df, word_file, progress, status, actor, generar_ep, guardar_ep
                         ep_metadata = guardar_ep(row, position-1, 'Estudio_previo.docx', ep_bytes, actor)
                         saved += 1
                     except Exception:
-                        errors.append(f'Fila {position}: el estudio previo se descargarÃ¡, pero no se pudo guardar en Supabase.')
+                        errors.append(f'Fila {position}: el estudio previo se descargará, pero no se pudo guardar en Supabase.')
                 if guardar_minuta:
                     try:
                         guardar_minuta(row, pair_id, minuta, ep_bytes, ep_metadata, actor)
                         saved += 1
                     except Exception:
-                        errors.append(f'Fila {position}: la minuta se descargarÃ¡, pero no se pudo registrar en Supabase. Revisa la configuraciÃ³n de minutas y el esquema adicional.')
+                        errors.append(f'Fila {position}: la minuta se descargará, pero no se pudo registrar en Supabase. Revisa la configuración de minutas y el esquema adicional.')
             except Exception as exc:
-                errors.append(f'Fila {position}: no se generÃ³ el par de documentos: {exc}')
+                errors.append(f'Fila {position}: no se generó el par de documentos: {exc}')
             progress.progress(position / len(df))
             status.text(f'Procesando par {position} de {len(df)}...')
     status.text('Proceso completado.')
