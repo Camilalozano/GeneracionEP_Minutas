@@ -122,6 +122,12 @@ class MinutasTest(unittest.TestCase):
         self.assertEqual(count, 0)
         self.assertTrue(errors)
 
+    def test_spanish_labels_are_not_mojibake(self):
+        source = (ROOT/'minutas.py').read_text(encoding='utf-8')
+        self.assertNotIn('\u00c3', source)
+        self.assertNotIn('\u00c2', source)
+        self.assertIn('N\u00famero de contrato', minutas.CONTRATO['numero_contrato'])
+
     def test_private_registry_and_schema_preflight(self):
         calls = []
         class Response:
