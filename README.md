@@ -1,154 +1,30 @@
-# Generador Inteligente de Documentos
+# Generación de Estudios Previos
 
-Aplicación web para la generación automatizada de documentos Word a partir de datos en Excel. Utiliza plantillas parametrizadas con placeholders `{{variable}}` para crear múltiples documentos personalizados de manera eficiente.
+Aplicativo exclusivo de Estudios Previos. El formulario, Excel, motor Word, tablas y almacenamiento existentes se conservan.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://automadedoc.streamlit.app/)
+- App: https://extractestudiosprevios-hvpueverxg24qsx7z4e7ad.streamlit.app/
+- Entrada: `streamlit_app.py`.
+- Plantillas: `Plantilla.docx` y `PlantillaCargaMasivaEstudiosPrevios.xlsx`.
+- Supabase: exclusivamente `zwpmdgpywgypdmqygsvv`.
+- Tablas existentes: `EstudiosPrevios`, `DocumentosGenerados`, `BitacoraAuditoria`.
+- Bucket existente: `documentos-generados` (conservar su configuración).
+- Minutas se mantiene en https://github.com/Camilalozano/GeneracionMinutas, con despliegue propio.
 
----
+## Base histórica
 
-## Descripción
+Se recuperó el aplicativo de `7ebb910e1232d94e72183f560f3fd479e6d05f45`, anterior a la integración de Minutas en `7bed8b9`. Incluye el ajuste para claves secret de Supabase. No se reescribe el historial Git.
 
-Esta herramienta permite automatizar la creación de documentos mediante:
+## Ejecutar
 
-- Carga de un archivo Excel (.xlsx) con datos a procesar
-- Carga de una plantilla Word (.docx) con placeholders
-- Vista previa de datos antes de generar
-- Generación masiva de documentos con barra de progreso
-- Descarga de documentos generados en formato ZIP
-- Guardado automático de documentos `.docx` en Supabase Storage privado
-
-**Ideal para:** certificados, contratos, cartas, actas, informes y cualquier documento que necesite personalizarse masivamente.
-
----
-
-## Demo en vivo
-
-**Prueba la aplicación aquí:** [https://automadedoc.streamlit.app/](https://automadedoc.streamlit.app/)
-
----
-
-## Tecnologías utilizadas
-
-| Tecnología | Descripción |
-|------------|-------------|
-| Python 3.x | Lenguaje de programación |
-| Streamlit | Framework para interfaz web |
-| python-docx | Manipulación de documentos Word |
-| pandas | Procesamiento de datos Excel |
-| openpyxl | Motor para archivos .xlsx |
-| Supabase Storage | Almacenamiento privado de documentos generados |
-
----
-
-## Instalación local
-
-### 1. Clona el repositorio
-
-```bash
-git clone https://github.com/tu-usuario/automotedoc.git
-cd automotedoc
-```
-
-### 2. Instala las dependencias
-
-```bash
+```sh
 pip install -r requirements.txt
-```
-
-### 3. Ejecuta la aplicación
-
-```bash
 streamlit run streamlit_app.py
+python -m unittest discover -s tests -v
 ```
 
-La aplicación se abrirá en `http://localhost:8501`
+Conservar los secretos actuales de Streamlit: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET_DOCUMENTOS`, `ADMIN_PASSWORD`. Nunca subir `.streamlit/secrets.toml`.
 
----
+## Datos y reversión
 
-## Cómo usar
-
-### Paso 1: Prepara tu Excel
-
-Crea un archivo Excel donde cada columna representa una variable y cada fila un documento a generar.
-
-| nombre | cargo | fecha |
-|--------|-------|-------|
-| Juan Pérez | Analista | 2024-01-15 |
-| María García | Coordinadora | 2024-01-16 |
-
-### Paso 2: Prepara tu plantilla Word
-
-Crea un documento Word usando placeholders con doble llave:
-
-```
-Certificamos que {{nombre}} desempeña el cargo de {{cargo}} desde el {{fecha}}.
-```
-
-### Paso 3: Genera los documentos
-
-1. Sube ambos archivos en la aplicación
-2. Haz clic en "Generar Documentos"
-3. Descarga el ZIP con todos los documentos personalizados
-
-
----
-
-## Guardado de documentos en Supabase
-
-La aplicación puede guardar automáticamente cada plantilla diligenciada `.docx` en un bucket privado de Supabase Storage y registrar sus metadatos en la tabla `DocumentosGenerados`.
-
-### 1. Configura el bucket
-
-Crea un bucket privado en Supabase Storage llamado:
-
-```text
-documentos-generados
-```
-
-### 2. Configura la tabla de metadatos
-
-La aplicación usa la tabla `DocumentosGenerados` para registrar `storage_bucket`, `storage_path`, `nombre_archivo`, `mime_type`, `size_bytes`, `sha256`, `actor` y `fecha_hora_utc`. Si `id_caso` está definido como identity primary key, la app lo omite para que Supabase lo genere automáticamente.
-
-### 3. Configura secretos
-
-En `.streamlit/secrets.toml` o en Streamlit Cloud > App settings > Secrets agrega:
-
-```toml
-SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
-SUPABASE_PUBLISHABLE_KEY = "TU_SUPABASE_PUBLISHABLE_KEY"
-SUPABASE_SERVICE_ROLE_KEY = "TU_SUPABASE_SERVICE_ROLE_KEY"
-SUPABASE_BUCKET_DOCUMENTOS = "documentos-generados"
-ADMIN_PASSWORD = "CAMBIA_ESTA_CLAVE"
-```
-
-`SUPABASE_SERVICE_ROLE_KEY` debe mantenerse únicamente como secreto porque permite escribir en el bucket privado y en las tablas configuradas.
-
-### 4. Genera documentos
-
-Al hacer clic en **Generar Documentos**, la app mantiene la descarga ZIP y además sube cada `.docx` al bucket privado. El panel administrativo incluye una pestaña **Documentos generados** para consultar y descargar el CSV de metadatos.
-
----
-
-## Estructura del proyecto
-
-```
-automotedoc/
-├── streamlit_app.py    # Aplicación principal
-├── requirements.txt    # Dependencias
-├── README.md          # Este archivo
-└── .gitignore         # Archivos ignorados
-```
-
----
-
-## Enlaces útiles
-
-- [Documentación python-docx](https://python-docx.readthedocs.io/)
-- [Documentación Streamlit](https://docs.streamlit.io/)
-- [Aplicación desplegada](https://automadedoc.streamlit.app/)
-
-
-## Complemento de minutas de persona natural
-
-El formulario guiado genera ahora el estudio previo y la minuta en un mismo ZIP.
-Consulta [uso y pruebas](docs/MINUTAS.md) y [cambios propuestos de Supabase](docs/SUPABASE_MINUTAS.md).
+Esta separación no elimina, mueve ni modifica registros históricos ni archivos almacenados. Las nuevas minutas usan una tabla y bucket propios en el mismo proyecto; no es una base física distinta ni aislamiento de credenciales por tabla. El histórico combinado queda conservado donde está.
+Para revertir el código, revertir el commit de separación. No borrar tablas ni buckets.
