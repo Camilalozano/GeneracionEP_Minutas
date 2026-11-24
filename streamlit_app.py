@@ -19,7 +19,7 @@ import requests
 
 # ============== CONFIGURACIÓN DE PÁGINA ==============
 st.set_page_config(
-    page_title="Atenea: Generador inteligente de Estudios Previos",
+    page_title="Atenea_Generador inteligente de Estudios Previos",
     page_icon="Generador de Documentos",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -723,7 +723,7 @@ with st.sidebar:
 # Header
 st.markdown("""
 <div class="main-header">
-    <h1 class="main-title" style="color: white;">Atenea: Generador inteligente de Estudios Previos</h1>
+    <h1 class="main-title" style="color: white;">Atenea_Generador inteligente de Estudios Previos</h1>
     <p class="subtitle">Estudios Previos | Gerencia de Gestión Corporativa</p>
 </div>
 """, unsafe_allow_html=True)
