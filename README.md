@@ -16,6 +16,10 @@ Se recuperó el aplicativo de `7ebb910e1232d94e72183f560f3fd479e6d05f45`, anteri
 
 ## Ejecutar
 
+La respuesta a licencias es siempre **No** en formulario, vista previa, Word y nuevos registros guardados. El Excel de carga masiva no incluye `requiere_licencias_si` ni `requiere_licencias_no`; si se carga un archivo antiguo, esas columnas se ignoran. Las obligaciones específicas se conservan.
+
+La plantilla Excel es una tabla de captura sin conexión de actualización externa, para evitar que una actualización vuelva a incorporar las columnas retiradas. Se conservan las demás columnas, filas y formatos. Los campos internos de licencias se mantienen para completar las plantillas Word existentes y guardar la respuesta fija, sin modificar el histórico.
+
 ```sh
 pip install -r requirements.txt
 streamlit run streamlit_app.py
