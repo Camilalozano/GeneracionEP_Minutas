@@ -20,6 +20,8 @@ La respuesta a licencias es siempre **No** en formulario, vista previa, Word y n
 
 La plantilla Excel es una tabla de captura sin conexión de actualización externa, para evitar que una actualización vuelva a incorporar las columnas retiradas. Se conservan las demás columnas, filas y formatos. Los campos internos de licencias se mantienen para completar las plantillas Word existentes y guardar la respuesta fija, sin modificar el histórico.
 
+La fecha de elaboración (`{{hoy}}`) se completa en el Word descargable con la fecha del formulario. En carga masiva, si la columna `hoy` no existe o está vacía, se usa la fecha actual de Bogotá. Se admite una fecha explícita en formato DD/MM/AAAA, AAAA-MM-DD o una celda de fecha Excel. Una fecha inválida detiene la carga con un aviso.
+
 ```sh
 pip install -r requirements.txt
 streamlit run streamlit_app.py
