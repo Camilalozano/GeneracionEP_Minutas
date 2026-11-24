@@ -35,6 +35,8 @@ class EstudiosTests(unittest.TestCase):
             if field.label.endswith('*') or field.label == 'Contratista':
                 field.set_value('Dato de prueba')
         next(f for f in app.text_input if f.label == 'Número de proyecto *').set_value('123')
+        from datetime import date
+        app.date_input[0].set_value(date(2026, 11, 20))
         for field in app.text_area:
             if not field.disabled:
                 field.set_value('Texto de prueba para completar el estudio previo aprobado.')
@@ -45,6 +47,10 @@ class EstudiosTests(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(app.session_state['resultado_zip'])) as z:
             self.assertEqual(len(z.namelist()), 1)
             self.assertNotIn('Minuta', z.namelist()[0])
+            from docx import Document
+            document = Document(io.BytesIO(z.read(z.namelist()[0])))
+            self.assertTrue(any('20/11/2026' in p.text for p in document.paragraphs))
+            self.assertFalse(any('{{hoy}}' in p.text for p in document.paragraphs))
 
     def test_licencias_fijas_en_word_y_registros(self):
         import pandas as pd
@@ -52,12 +58,14 @@ class EstudiosTests(unittest.TestCase):
         source = ast.parse((ROOT/'streamlit_app.py').read_text(encoding='utf-8'))
         names = {'LICENCIAS_FIJAS', 'PLANTILLA_VARIABLES', 'SUPABASE_COLUMNAS_ESTUDIOS',
                  'SUPABASE_COLUMNAS_ENTERAS', 'SUPABASE_COLUMNAS_FECHA'}
-        functions = {'replace_text_in_paragraph', 'diligenciar_documento',
+        functions = {'replace_text_in_paragraph', 'formatear_fecha_documento', 'diligenciar_documento',
                      'normalizar_valor_supabase', 'normalizar_registro_estudios'}
         nodes = [n for n in source.body if
                  (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in names for t in n.targets))
                  or (isinstance(n, ast.FunctionDef) and n.name in functions)]
-        namespace = {'pd': pd, 'Document': Document}
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        namespace = {'pd': pd, 'Document': Document, 'datetime': datetime, 'ZoneInfo': ZoneInfo}
         exec(compile(ast.Module(body=nodes, type_ignores=[]), '<test>', 'exec'), namespace)
         for data in [{}, {'requiere_licencias_si': 'X', 'requiere_licencias_no': ''}]:
             with self.subTest(data=data):
@@ -72,6 +80,35 @@ class EstudiosTests(unittest.TestCase):
                 record = namespace['normalizar_registro_estudios'](data)
                 self.assertIsNone(record['requiere_licencias_si'])
                 self.assertEqual(record['requiere_licencias_no'], 'X')
+
+    def test_fecha_en_plantilla_real_carga_masiva(self):
+        import pandas as pd
+        from docx import Document
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        source = ast.parse((ROOT/'streamlit_app.py').read_text(encoding='utf-8'))
+        names = {'replace_text_in_paragraph', 'formatear_fecha_documento', 'diligenciar_documento'}
+        nodes = [n for n in source.body if isinstance(n, ast.FunctionDef) and n.name in names]
+        namespace = {'pd': pd, 'Document': Document, 'datetime': datetime, 'ZoneInfo': ZoneInfo,
+                     'LICENCIAS_FIJAS': {'requiere_licencias_si': '', 'requiere_licencias_no': 'X'}}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), '<test>', 'exec'), namespace)
+        today = datetime.now(ZoneInfo('America/Bogota')).strftime('%d/%m/%Y')
+        for value, expected in [(None, today), ('', today), (float('nan'), today),
+                                (pd.NaT, today), ('03/04/2026', '03/04/2026'),
+                                ('2026-04-03', '03/04/2026'),
+                                (pd.Timestamp('2026-04-03'), '03/04/2026')]:
+            with self.subTest(value=value):
+                data = {} if value is None else {'hoy': value}
+                document = namespace['diligenciar_documento'](
+                    io.BytesIO((ROOT/'Plantilla.docx').read_bytes()), pd.Series(data, dtype=object))
+                buffer = io.BytesIO()
+                document.save(buffer)
+                buffer.seek(0)
+                downloaded = Document(buffer)
+                date_line = next(p.text for p in downloaded.paragraphs if 'Fecha de Elaboración:' in p.text)
+                self.assertEqual(date_line, f'Fecha de Elaboración: {expected}')
+        with self.assertRaisesRegex(ValueError, 'fecha'):
+            namespace['formatear_fecha_documento']('31/02/2026')
 
     def test_excel_sin_columnas_licencias(self):
         import openpyxl

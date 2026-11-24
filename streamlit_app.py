@@ -4,6 +4,7 @@ from docx import Document
 import zipfile
 import io
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import time
 import base64
 from pathlib import Path
@@ -98,9 +99,28 @@ def replace_text_in_paragraph(paragraph, key, value):
             paragraph.add_run(replaced_text)
 
 
+def formatear_fecha_documento(valor=None):
+    """Usa la fecha suministrada o la fecha actual de Bogotá si está vacía."""
+    if valor is None or pd.isna(valor) or not str(valor).strip():
+        return datetime.now(ZoneInfo("America/Bogota")).strftime("%d/%m/%Y")
+    if hasattr(valor, "strftime"):
+        return valor.strftime("%d/%m/%Y")
+    texto = str(valor).strip()
+    for formato in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(texto, formato).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(texto.replace("Z", "+00:00")).strftime("%d/%m/%Y")
+    except ValueError:
+        raise ValueError("La fecha 'hoy' debe ser válida y usar DD/MM/AAAA o AAAA-MM-DD.")
+
+
 def diligenciar_documento(word_file, row):
     """Diligencia una plantilla Word con los valores de una fila de datos."""
     row = row.copy()
+    row["hoy"] = formatear_fecha_documento(row.get("hoy"))
     for campo, valor in LICENCIAS_FIJAS.items():
         row[campo] = valor
     word_file.seek(0)
@@ -583,7 +603,7 @@ def obtener_fecha_borrador(defaults):
         fecha_iso = pd.to_datetime(texto_fecha, errors="coerce")
         if pd.notna(fecha_iso):
             return fecha_iso.date()
-    return datetime.now().date()
+    return datetime.now(ZoneInfo("America/Bogota")).date()
 
 
 if "form_borrador" not in st.session_state:
@@ -1040,6 +1060,9 @@ else:
             df = pd.read_excel(io.BytesIO(excel_bytes)).drop(
                 columns=list(LICENCIAS_FIJAS), errors="ignore"
             )
+            df["hoy"] = df.get("hoy", pd.Series(index=df.index, dtype=object)).map(
+                formatear_fecha_documento
+            )
 
             if supabase_configurado() and st.session_state.excel_guardado_hash != excel_hash:
                 registros_excel = df.fillna("").to_dict(orient="records")
@@ -1056,6 +1079,11 @@ else:
             st.success(f"✅ {excel_file.name}")
         except Exception as e:
             st.error(f"Error al leer Excel: {e}")
+
+    st.caption(
+        "Fecha de elaboración: se usa la fecha actual de Bogotá si el Excel no incluye "
+        "la columna hoy o la deja vacía. Para indicar otra fecha, agrega hoy con formato DD/MM/AAAA."
+    )
 
 st.markdown("##### 📝 Plantilla (Word)")
 plantilla_precargada, nombre_plantilla_precargada = cargar_plantilla_precargada()
