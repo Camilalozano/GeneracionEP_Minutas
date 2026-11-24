@@ -100,6 +100,9 @@ def replace_text_in_paragraph(paragraph, key, value):
 
 def diligenciar_documento(word_file, row):
     """Diligencia una plantilla Word con los valores de una fila de datos."""
+    row = row.copy()
+    for campo, valor in LICENCIAS_FIJAS.items():
+        row[campo] = valor
     word_file.seek(0)
     doc = Document(word_file)
 
@@ -202,6 +205,8 @@ def generar_documentos(df, word_file, progress_bar, status_text, actor=None, gua
         raise Exception(f"Error procesando documentos: {str(e)}")
 
 
+LICENCIAS_FIJAS = {"requiere_licencias_si": "", "requiere_licencias_no": "X"}
+
 PLANTILLA_VARIABLES = [
     "hoy",
     "contratista",
@@ -221,8 +226,6 @@ PLANTILLA_VARIABLES = [
     "valor_contrato_letras",
     "valor_contrato_numeros",
     "forma_pago",
-    "requiere_licencias_si",
-    "requiere_licencias_no",
     "obligaciones_especificas",
     "idoneidad",
     "equivalencias",
@@ -276,8 +279,6 @@ ETIQUETAS_CAMPOS = {
     "valor_contrato_letras": "Valor del contrato en letras",
     "valor_contrato_numeros": "Valor del contrato en números",
     "forma_pago": "Forma de pago",
-    "requiere_licencias_si": "Requiere licencias: sí",
-    "requiere_licencias_no": "Requiere licencias: no",
     "obligaciones_especificas": "Obligaciones específicas",
     "idoneidad": "Idoneidad",
     "equivalencias": "Equivalencias",
@@ -299,11 +300,6 @@ def validar_formulario(data):
     if data.get("objeto_contrato") and len(data["objeto_contrato"].strip()) < 20:
         errores["objeto_contrato"] = "El objeto del contrato debe tener al menos 20 caracteres."
 
-    licencias_si = str(data.get("requiere_licencias_si", "")).strip()
-    licencias_no = str(data.get("requiere_licencias_no", "")).strip()
-    if bool(licencias_si) == bool(licencias_no):
-        errores["requiere_licencias"] = "Selecciona solo una opción para indicar si requiere licencias."
-
     return errores
 
 
@@ -315,7 +311,7 @@ MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.docu
 
 PLANTILLA_CARGA_MASIVA_EXCEL = "PlantillaCargaMasivaEstudiosPrevios.xlsx"
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-SUPABASE_COLUMNAS_ESTUDIOS = ["id", *PLANTILLA_VARIABLES]
+SUPABASE_COLUMNAS_ESTUDIOS = ["id", *PLANTILLA_VARIABLES, *LICENCIAS_FIJAS]
 SUPABASE_COLUMNAS_BITACORA = [
     "id_evento",
     "ID_Caso",
@@ -481,7 +477,8 @@ def normalizar_registro_estudios(origen):
     for columna in SUPABASE_COLUMNAS_ESTUDIOS:
         if columna == "id":
             continue
-        registro[columna] = normalizar_valor_supabase(columna, origen.get(columna, ""))
+        valor = LICENCIAS_FIJAS[columna] if columna in LICENCIAS_FIJAS else origen.get(columna, "")
+        registro[columna] = normalizar_valor_supabase(columna, valor)
     return registro
 
 
@@ -890,14 +887,7 @@ if modo_captura == "Formulario guiado (principal)":
             help="Variable: {{forma_pago}}",
         )
 
-        st.markdown("#### 5) Licencias y obligaciones")
-        requiere_licencias = st.radio(
-            "¿Requiere licencias? *",
-            ["Sí", "No"],
-            index=0 if defaults.get("requiere_licencias_si") else 1,
-            horizontal=True,
-            help="Marca una opción para diligenciar {{requiere_licencias_si}} o {{requiere_licencias_no}} con una X.",
-        )
+        st.markdown("#### 5) Obligaciones específicas")
         obligaciones_especificas = st.text_area(
             "Obligaciones específicas *",
             value=defaults.get("obligaciones_especificas", ""),
@@ -978,8 +968,6 @@ if modo_captura == "Formulario guiado (principal)":
         "valor_contrato_letras": valor_contrato_letras,
         "valor_contrato_numeros": valor_contrato_numeros,
         "forma_pago": forma_pago,
-        "requiere_licencias_si": "X" if requiere_licencias == "Sí" else "",
-        "requiere_licencias_no": "X" if requiere_licencias == "No" else "",
         "obligaciones_especificas": obligaciones_especificas,
         "idoneidad": idoneidad,
         "equivalencias": equivalencias,
@@ -1049,7 +1037,9 @@ else:
         try:
             excel_bytes = excel_file.getvalue()
             excel_hash = hashlib.sha256(excel_bytes).hexdigest()
-            df = pd.read_excel(io.BytesIO(excel_bytes))
+            df = pd.read_excel(io.BytesIO(excel_bytes)).drop(
+                columns=list(LICENCIAS_FIJAS), errors="ignore"
+            )
 
             if supabase_configurado() and st.session_state.excel_guardado_hash != excel_hash:
                 registros_excel = df.fillna("").to_dict(orient="records")
